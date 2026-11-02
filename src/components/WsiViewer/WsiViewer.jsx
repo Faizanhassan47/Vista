@@ -269,8 +269,18 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
       imageLoaderLimit: 6,
     });
     viewerRef.current = viewer;
+    const clearViewerInlineBackgrounds = () => {
+      const container = viewer.container;
+      if (!container) return;
+      [container, ...container.querySelectorAll('[style]')].forEach((element) => {
+        element.style.removeProperty('background');
+        element.style.removeProperty('background-color');
+        element.style.removeProperty('background-image');
+      });
+    };
+    clearViewerInlineBackgrounds();
 
-    viewer.addHandler('open', () => { setViewerInstance(viewer); setViewerReady(true); setLoadFailure(''); });
+    viewer.addHandler('open', () => { clearViewerInlineBackgrounds(); setViewerInstance(viewer); setViewerReady(true); setLoadFailure(''); });
     viewer.addHandler('open-failed', (event) => setLoadFailure(event.message || 'The slide descriptor could not be loaded.'));
     viewer.addHandler('tile-load-failed', (event) => {
       const now = Date.now();

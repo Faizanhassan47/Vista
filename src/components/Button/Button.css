@@ -44,9 +44,21 @@
 }
 
 .app-button--primary {
-  color: var(--primary-text, #fff);
-  background: var(--color-primary);
-  border-color: var(--color-primary);
+  color: #fff;
+  background: #2d2d2d;
+  border-color: #2d2d2d;
+  min-height: 64px;
+  padding: 0 18px;
+  border-radius: 999px;
+  box-shadow: none;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.app-button--primary:hover:not(:disabled) {
+  background: #171717;
+  border-color: #171717;
+  filter: none;
 }
 
 .app-button--secondary {

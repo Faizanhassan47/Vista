@@ -7,6 +7,7 @@ import {
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { platformService } from '../../services/platformService';
+import FilterBar from '../../components/FilterBar/FilterBar';
 import Hl7Sandbox from './Hl7Sandbox';
 import './PlatformOperations.css';
 
@@ -125,6 +126,7 @@ export default function PlatformOperations() {
     const matchesSearch = !ingestionSearch || job.original_filename?.toLowerCase().includes(ingestionSearch.toLowerCase()) || job.adapter_name?.toLowerCase().includes(ingestionSearch.toLowerCase());
     return matchesFilter && matchesSearch;
   });
+  const ingestionSearchSuggestions = [...new Set(data.ingestion.flatMap((job) => [job.original_filename, job.adapter_name]).filter((value) => value !== null && value !== undefined && String(value).trim()).map(String))];
 
   const m = data.metrics || {};
 
@@ -407,29 +409,16 @@ export default function PlatformOperations() {
                 <h2>Whole Slide Image (WSI) Import Management</h2>
                 <p>Search, batch process, and review quarantined digital pathology slide uploads.</p>
               </div>
-              <div style={{ display: 'flex', gap: 'var(--spacing-xs)', marginLeft: 'auto' }}>
+              <div className="ops-card__actions">
                 <button disabled={!selectedJobIds.length} onClick={() => handleBatch('retry')}>Batch Retry</button>
                 <button disabled={!selectedJobIds.length} onClick={() => handleBatch('cancel')}>Batch Cancel</button>
               </div>
             </header>
 
-            <div className="filter-bar">
-              <input
-                type="text"
-                placeholder="Search by filename or adapter…"
-                value={ingestionSearch}
-                onChange={(e) => setIngestionSearch(e.target.value)}
-              />
-              <select value={ingestionFilter} onChange={(e) => setIngestionFilter(e.target.value)}>
-                <option value="All">All Statuses</option>
-                <option value="Queued">Queued</option>
-                <option value="Processing">Processing</option>
-                <option value="Completed">Completed</option>
-                <option value="Quarantined">Quarantined</option>
-                <option value="Failed">Failed</option>
-                <option value="Duplicate">Duplicate</option>
-              </select>
-            </div>
+            <FilterBar layout="toolbar" fields={[
+              { label: 'Search ingestion jobs', type: 'text', value: ingestionSearch, onChange: setIngestionSearch, placeholder: 'Search by filename or adapter…', suggestions: ingestionSearchSuggestions },
+              { label: 'Ingestion status', type: 'select', value: ingestionFilter, onChange: setIngestionFilter, options: ['All', 'Queued', 'Processing', 'Completed', 'Quarantined', 'Failed', 'Duplicate'].map((value) => ({ value, label: value === 'All' ? 'All statuses' : value })) },
+            ]} />
 
             <div className="ops-table-wrap">
               <table>
@@ -678,3 +667,4 @@ export default function PlatformOperations() {
     </main>
   );
 }
+

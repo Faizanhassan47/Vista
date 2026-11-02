@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Check, Clock3, Microscope, Search, ShieldCheck, SlidersHorizontal, UserRoundCheck } from 'lucide-react';
+import { Check, Clock3, Microscope, Search, ShieldCheck, UserRoundCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { aiSubscriptionService } from '../../services/aiSubscriptionService';
+import FilterBar from '../../components/FilterBar/FilterBar';
 import { modelListing } from './aiListing';
 import './AIFeatures.css';
 
@@ -46,6 +47,13 @@ export default function AIFeatures() {
   }, [data, filter, query]);
 
   const visibleFeatures = (data?.features || []).filter((feature) => feature.catalog_title && feature.is_catalog_visible !== false && feature.is_catalog_visible !== 0 && feature.is_catalog_deleted !== true && feature.is_catalog_deleted !== 1);
+  const searchSuggestions = useMemo(() => {
+    const values = visibleFeatures.flatMap((feature) => {
+      const detail = modelListing(feature);
+      return [feature.feature_name, detail.category, detail.summary, detail.purpose];
+    }).filter((value) => value !== null && value !== undefined && String(value).trim());
+    return [...new Set(values.map(String))];
+  }, [visibleFeatures]);
   const availableCount = visibleFeatures.filter((feature) => accessState(feature, data?.subscription).key === 'available').length;
   const comingSoonCount = visibleFeatures.filter((feature) => !feature.is_implemented).length;
 
@@ -65,10 +73,10 @@ export default function AIFeatures() {
   }
 
   return <main className="ai-store" id="main-content">
-    <section className="ai-store__toolbar" aria-label="Filter AI models">
-      <label className="ai-store__search"><Search size={17} /><span className="sr-only">Search AI models</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search models or clinical purpose" /></label>
-      <label className="ai-store__filter"><SlidersHorizontal size={16} /><span className="sr-only">Filter AI models</span><select value={filter} onChange={(event) => setFilter(event.target.value)}><option>All models</option><option>Available</option><option>Coming soon</option><option>Needs access</option></select></label>
-    </section>
+    <FilterBar layout="toolbar" fields={[
+      { label: 'Search AI models', type: 'text', value: query, onChange: setQuery, placeholder: 'Search models or clinical purpose', suggestions: searchSuggestions },
+      { label: 'Model availability', type: 'select', value: filter, onChange: setFilter, options: ['All models', 'Available', 'Coming soon', 'Needs access'].map((value) => ({ value, label: value })) },
+    ]} />
 
     {error && <div className="ai-store__error" role="alert"><strong>AI catalog could not be updated.</strong><span>{error}</span></div>}
     {!data && !error && <div className="ai-store__loading"><span className="loading-spinner" /> Loading the AI model catalog…</div>}
@@ -95,3 +103,4 @@ export default function AIFeatures() {
     </section>}
   </main>;
 }
+

@@ -38,15 +38,18 @@ function AdminLogsPage() { return <AdminContent><AdministrationLogs /></AdminCon
 function AILicensingPage() { return <AdminContent><AILicensing /></AdminContent>; }
 function ManageAIFeaturesPage() { return <AdminContent><ManageAIFeatures /></AdminContent>; }
 function SystemSettingsPage() { return <AdminContent><SystemSettings /></AdminContent>; }
-function NotFound() { return <main id="main-content" className="not-found"><h1>Page not found</h1><p>The requested page does not exist.</p><Link to="/" className="btn-primary route-link">Return to workspace</Link></main>; }
+function LibraryShell({ title, children }) { return <ClinicalShell pageTitle={title}>{children}</ClinicalShell>; }
+function HelpCenterPage() { return <ClinicalShell pageTitle="Help Center"><main id="main-content" className="not-found"><h1>Help Center</h1><p>Help resources for the VISTA pathology workspace are being prepared.</p><Link to="/" className="btn-primary route-link">Return to dashboard</Link></main></ClinicalShell>; }
+function NotFound() { return <ClinicalShell pageTitle="Page not found"><main id="main-content" className="not-found"><h1>Page not found</h1><p>The requested page does not exist.</p><Link to="/" className="btn-primary route-link">Return to workspace</Link></main></ClinicalShell>; }
 
 export default function AppRouter() {
   return <BrowserRouter><Suspense fallback={<LoadingScreen />}><Routes>
     <Route path="/" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="The dashboard could not be displayed"><Dashboard /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
     <Route path="/dashboard" element={<Navigate to="/" replace />} />
-    <Route path="/slides" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="The slide library could not be displayed"><SlideLibrary /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
-    <Route path="/case-library" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="The case library could not be displayed"><CaseLibrary /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
-    <Route path="/cases" element={<ProtectedRoute><ErrorBoundary title="The workspace could not be displayed"><Workspace /></ErrorBoundary></ProtectedRoute>} />
+    <Route path="/slides" element={<ProtectedRoute><LibraryShell title="Slide Library"><ErrorBoundary title="The slide library could not be displayed"><SlideLibrary /></ErrorBoundary></LibraryShell></ProtectedRoute>} />
+    <Route path="/case-library" element={<ProtectedRoute><LibraryShell title="Case Library"><ErrorBoundary title="The case library could not be displayed"><CaseLibrary /></ErrorBoundary></LibraryShell></ProtectedRoute>} />
+    <Route path="/cases" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="The workspace could not be displayed"><Workspace /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
+    <Route path="/create-case" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="The create-case page could not be displayed"><Workspace /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
     <Route path="/admin" element={<ProtectedRoute adminOnly><ErrorBoundary title="The admin panel could not be displayed"><AdminPage /></ErrorBoundary></ProtectedRoute>} />
     <Route path="/admin/settings" element={<ProtectedRoute adminOnly><ErrorBoundary title="System settings could not be displayed"><SystemSettingsPage /></ErrorBoundary></ProtectedRoute>} />
     <Route path="/admin/logs" element={<ProtectedRoute adminOnly><ErrorBoundary title="Activity logs could not be displayed"><AdminLogsPage /></ErrorBoundary></ProtectedRoute>} />
@@ -56,6 +59,7 @@ export default function AppRouter() {
     <Route path="/patients" element={<ProtectedRoute pathologistExcluded><ClinicalShell><ErrorBoundary title="The patient directory could not be displayed"><PatientDirectory /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
     <Route path="/patients/:patientId" element={<ProtectedRoute pathologistExcluded><ClinicalShell><ErrorBoundary title="The patient profile could not be displayed"><PatientProfile /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
     <Route path="/ai-features" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="AI features could not be displayed"><AIFeatures /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
+    <Route path="/help" element={<ProtectedRoute><HelpCenterPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes></Suspense></BrowserRouter>;
 }
