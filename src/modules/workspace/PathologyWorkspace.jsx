@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import {
   Calendar, Edit3, FileImage, Layers, ClipboardCheck, History, Microscope, Columns, X,
@@ -45,7 +45,7 @@ const MAX_VIEWER_SCREENS = 4;
 export default function App() {
   const { user, logout } = useAuth();
   const [branding, setBranding] = useState({ title: 'Digital Pathology Platform', subtitle: 'Digital Pathology Platform', logo: null, logoSize: '32', titleSize: '14', subtitleSize: '10', theme: 'dark', primaryColor: '#4a90c2', secondaryColor: '#087f8c' });
-  useEffect(() => { const controller = new AbortController(); platformService.branding(controller.signal).then((data) => { setBranding(data); document.documentElement.dataset.theme = data.theme || 'dark'; document.documentElement.style.setProperty('--brand-logo-size', `${data.logoSize || 32}px`); document.documentElement.style.setProperty('--brand-title-size', `${data.titleSize || 14}px`); document.documentElement.style.setProperty('--brand-subtitle-size', `${data.subtitleSize || 10}px`); document.documentElement.style.setProperty('--color-primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--sidebar-background', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--color-accent', data.secondaryColor || '#087f8c'); }).catch(() => {}); return () => controller.abort(); }, []);
+  useEffect(() => { const controller = new AbortController(); platformService.branding(controller.signal).then((data) => { setBranding(data); document.documentElement.dataset.theme = data.theme || 'dark'; document.documentElement.style.setProperty('--brand-logo-size', `${data.logoSize || 32}px`); document.documentElement.style.setProperty('--brand-title-size', `${data.titleSize || 14}px`); document.documentElement.style.setProperty('--brand-subtitle-size', `${data.subtitleSize || 10}px`); document.documentElement.style.setProperty('--color-primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--sidebar-background', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--color-accent', data.secondaryColor || '#087f8c'); }).catch(() => { }); return () => controller.abort(); }, []);
   const [searchParams] = useSearchParams();
   const requestedPatientId = Number(searchParams.get('patient')) || null;
   const requestedCaseId = Number(searchParams.get('case')) || null;
@@ -310,7 +310,14 @@ export default function App() {
 
   const validateFile = (file) => {
     if (!file) return true;
-    const isWsi = file.name.toLowerCase().endsWith('.svs');
+    const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? '';
+    const supportedImages = new Set(['.jpg', '.jpeg', '.png']);
+    const supportedWsi = new Set(['.svs', '.tif', '.tiff']);
+    if (!supportedImages.has(extension) && !supportedWsi.has(extension)) {
+      toast.error('Upload a JPG, PNG, SVS, or OpenSlide-compatible TIFF file.');
+      return false;
+    }
+    const isWsi = supportedWsi.has(extension);
     const limit = (isWsi ? wsiLimitMb : 10) * 1024 * 1024;
     if (file.size > limit) {
       toast.error(`File exceeds the ${isWsi ? wsiLimitMb : 10} MB limit.`);
@@ -557,7 +564,7 @@ export default function App() {
     <Field label="Slide label *"><input name="label" required maxLength={120} placeholder="Slide A H&E" /></Field>
     <Field label="Stain"><input name="stain" placeholder="H&E, IHC, PAS…" /></Field>
     <Field label="Specimen description"><input name="specimen_description" placeholder="Block, level, tissue…" /></Field>
-    <Field label={`File (JPG/PNG 10 MB, SVS ${wsiLimitMb} MB) *`}><input name="image" required type="file" accept="image/jpeg,image/png,.svs" /></Field>
+    <Field label={`File (JPG/PNG max 10 MB, SVS/TIF/TIFF max ${wsiLimitMb} MB) *`}><input name="image" required type="file" accept="image/jpeg,image/png,image/tiff,.svs,.tif,.tiff" /></Field>
     <button className="btn-primary" disabled={busy}><Upload size={16} /> {busy ? 'Uploading…' : 'Upload Slide'}</button>
   </form> : null;
   const canRemoveSlides = ['Laboratory Manager', SYSTEM_ADMIN_ROLE, SUPER_ADMIN_ROLE].includes(user?.role);
@@ -627,7 +634,7 @@ export default function App() {
                   <Field label="Case description"><input name="description" placeholder="Specimen or case notes" /></Field>
                   <Field label="Assign doctor"><select name="reviewer" disabled={busy || reviewersLoading || Boolean(reviewersError)}><option value="">Unassigned</option>{availableReviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.username}>{reviewer.display_name || reviewer.username}</option>)}</select></Field>
                   <Field label="First slide label"><input name="slide_label" defaultValue="Slide 1" /></Field>
-                  <Field label="Optional first slide"><input name="image" type="file" accept="image/jpeg,image/png,.svs" /></Field>
+                  <Field label="Optional first slide"><input name="image" type="file" accept="image/jpeg,image/png,image/tiff,.svs,.tif,.tiff" /></Field>
                   <button className="btn-primary" disabled={busy || !selectedPatient} title={selectedPatient ? undefined : 'Select a patient first'}><Plus size={18} /> Create case</button>
                 </div>
               </form></>}
@@ -794,7 +801,7 @@ export default function App() {
               {showSlideForm && !(selectedCase.slides || []).length && slideUploadForm}
 
               {!(selectedCase.slides || []).length ? <div className="viewer-placeholder case-empty">
-                <Empty icon={FileImage} title="This case has no slides" text="Use Add Slide to attach a JPG, PNG, or SVS file." />
+                <Empty icon={FileImage} title="This case has no slides" text="Use Add Slide to attach a JPG, PNG, SVS, or TIFF file." />
               </div> : <>
                 <div className="slide-tray" aria-label="Case slide tray">
                   <div className="slide-tray-heading"><strong>Slides ({selectedCase.slides.length})</strong><button type="button" className="btn-control-secondary" onClick={() => setShowSlideForm((value) => !value)}><Plus size={13} /> Add</button></div>
