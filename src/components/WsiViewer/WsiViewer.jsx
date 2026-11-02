@@ -6,6 +6,8 @@ import './WsiViewer.css';
 import { API_BASE_URL as API } from '../../config';
 import Modal from '../Modal/Modal';
 import { viewerService } from '../../services/viewerService';
+import { grandqcService } from '../../services/grandqcService';
+import GrandQCOverlay, { qcClass } from './GrandQCOverlay';
 import { getAnnotationHoverMeasurements, getAnnotationMeasurements } from './annotationMeasurements';
 import { useAuth } from '../../modules/auth/AuthProvider';
 import { SYSTEM_ADMIN_ROLE, SUPER_ADMIN_ROLE } from '../../config/roles';
@@ -147,6 +149,47 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   // ── HoVer-Net AI analysis state ───────────────────────────────────────────
   /** The active analysis record returned by the backend (contains nuclei array). */
   const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [qcAnalysis, setQcAnalysis] = useState(null);
+  const [qcGeojson, setQcGeojson] = useState(null);
+  const [qcHiddenClasses, setQcHiddenClasses] = useState(new Set());
+  const [qcVisible, setQcVisible] = useState(true);
+  const [qcModeActive, setQcModeActive] = useState(false);
+  const [qcSelectedRegion, setQcSelectedRegion] = useState(null);
+
+  const qcClasses = (() => {
+    const counts = new Map();
+    for (const feature of qcGeojson?.features || []) {
+      const name = qcClass(feature);
+      counts.set(name, (counts.get(name) || 0) + 1);
+    }
+    return Array.from(counts, ([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  })();
+
+  useEffect(() => {
+    setQcAnalysis(null);
+    setQcGeojson(null);
+    setQcHiddenClasses(new Set());
+    setQcVisible(true);
+    setQcModeActive(false);
+    setQcSelectedRegion(null);
+  }, [slide.id]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setQcGeojson(null);
+    setQcSelectedRegion(null);
+    if (qcAnalysis?.id) {
+      grandqcService.geojson(qcAnalysis.id, controller.signal)
+        .then((data) => {
+          if (!controller.signal.aborted) setQcGeojson(data);
+        })
+        .catch((error) => {
+          if (error.name !== 'AbortError') onError?.(`Could not load GrandQC polygons: ${error.message}`);
+        });
+    }
+    return () => controller.abort();
+  }, [qcAnalysis?.id, slide.id, onError]);
   /** Per-class visibility toggles driven by the panel. */
   const [aiHiddenClasses, setAiHiddenClasses] = useState(new Set());
   /** The nucleus the user last clicked, shown in the panel detail card. */
@@ -874,6 +917,7 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
     } catch (error) { onError(`Could not delete annotation: ${error.message}`); }
   }
 
+
   const renderShape = (geom, color, isDraft) => {
     if (geom.annotation_type === 'point' || geom.type === 'point') {
       const point = isDraft ? geom.points[0] : { x: geom.points[0][0], y: geom.points[0][1] };
@@ -1106,6 +1150,13 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
                 </marker>
               ))}
             </defs>
+            <GrandQCOverlay
+              geojson={qcGeojson}
+              imageToViewport={imageToViewport}
+              hiddenClasses={qcHiddenClasses}
+              visible={qcVisible && qcModeActive && viewerReady}
+              onSelect={setQcSelectedRegion}
+            />
             {visible && filteredAnnotations.map((annotation) => (
               <g
                 key={annotation.id}
@@ -1218,6 +1269,12 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
             })}
             {draftGeometry && renderShape(draftGeometry, '#e85d75', true)}
           </svg>
+          {qcSelectedRegion && qcVisible && qcModeActive && (
+            <div className="grandqc-selected-region" role="status">
+              <span>GrandQC: {qcSelectedRegion.type} · Region {qcSelectedRegion.index + 1}</span>
+              <button type="button" onClick={() => setQcSelectedRegion(null)} aria-label="Close GrandQC region details">×</button>
+            </div>
+          )}
           {hoveredAnnotation && <div className="annotation-hover-measurement" role="tooltip">
             <header><strong>{hoveredAnnotation.label || 'Selected region'}</strong><span>{hoveredAnnotation.measurementSource}</span></header>
             {getAnnotationHoverMeasurements(hoveredAnnotation, calibration).map((measurement) => <div key={measurement.label}>
@@ -1315,6 +1372,17 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
           }}
           selectedNucleus={aiSelectedNucleus}
           onSelectNucleus={setAiSelectedNucleus}
+          onQcAnalysisChange={setQcAnalysis}
+          onQcFeatureActiveChange={setQcModeActive}
+          qcClasses={qcClasses}
+          qcVisible={qcVisible}
+          onToggleQcVisible={() => setQcVisible((value) => !value)}
+          qcHiddenClasses={qcHiddenClasses}
+          onToggleQcClass={(name) => setQcHiddenClasses((prev) => {
+            const next = new Set(prev);
+            if (next.has(name)) next.delete(name); else next.add(name);
+            return next;
+          })}
           onAnalysisReady={(analysis) => {
             setAiAnalysis(analysis);
             setAiSelectedNucleus(null);
