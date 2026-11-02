@@ -42,11 +42,14 @@ const CASE_STATUS_OPTIONS = ['New', 'In Review', 'Reviewed'];
 const MAX_VIEWER_SCREENS = 4;
 
 export default function App() {
+<<<<<<< HEAD
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [branding, setBranding] = useState({ title: 'Digital Pathology Platform', subtitle: 'Digital Pathology Platform', logo: null, logoSize: '32', titleSize: '14', subtitleSize: '10', theme: 'dark' });
   useEffect(() => { const controller = new AbortController(); platformService.branding(controller.signal).then((data) => { setBranding(data); document.documentElement.dataset.theme = data.theme || 'dark'; document.documentElement.style.setProperty('--brand-logo-size', `${data.logoSize || 32}px`); document.documentElement.style.setProperty('--brand-title-size', `${data.titleSize || 14}px`); document.documentElement.style.setProperty('--brand-subtitle-size', `${data.subtitleSize || 10}px`); }).catch(() => { }); return () => controller.abort(); }, []);
+=======
+
   const [searchParams] = useSearchParams();
   const requestedPatientId = Number(searchParams.get('patient')) || null;
   const requestedCaseId = Number(searchParams.get('case')) || null;
@@ -646,21 +649,9 @@ export default function App() {
               <option>All</option>{reviewers.map((reviewer) => <option key={reviewer}>{reviewer}</option>)}
             </select>
           </div>
-          <div className="cases-list-scroll">
-            {!cases.length ? <Empty icon={FileImage} title="No cases yet" text="Create a case above to begin." /> :
-              !filteredCases.length ? <Empty icon={Search} title="No matching cases" text="Try another worklist or clear the filters." /> :
-                filteredCases.map((item) => <button type="button" key={item.id}
-                  className={`case ${item.id === selectedCaseId ? 'case-active' : ''}`} aria-pressed={item.id === selectedCaseId} onClick={() => selectCase(item)}>
-                  <div className="case-item-header"><strong className="case-id">{item.case_id}</strong>
-                    <span className="case-count-pill">{item.slide_count} slide{item.slide_count === 1 ? '' : 's'}</span></div>
-                  <p className="case-desc">{item.description || 'No case description'}</p>
-                  <div className="case-review-summary"><span className={`review-status status-${(item.status || 'New').toLowerCase().replace(' ', '-')}`}>{item.status || 'New'}</span>
-                    <span><UserRound size={12} /> {item.reviewer || 'Unassigned'}</span></div>
-                  <div className="case-footer"><Calendar size={12} /> {formatDate(item.created_at)}</div>
-                </button>)}
-          </div>
-        </aside>
+        </header>
 
+<<<<<<< HEAD
         <section className="viewer-card multi-slide-card">
           {!selectedCase ? <div className="viewer-placeholder"><Empty icon={Layers} title="Select a case" text="Open a case to view its slide tray." /></div> : <>
             <div className="viewer-header">
@@ -671,6 +662,94 @@ export default function App() {
                 {!isAuditorRole(user?.role) && (
                   <button type="button" className="btn-control-secondary" onClick={() => setShowSlideForm((value) => !value)}><Upload size={15} /> Add slide</button>
                 )}
+=======
+        {selectedCase && <section className="case-review-hero" aria-label="Case review header">
+          <div className="case-review-hero__crumbs"><Link to="/cases">Cases workspace</Link><ChevronDown size={14} /><strong>{selectedCase.case_id}</strong><span className="case-review-hero__mode">Comparison mode</span></div>
+          <div className="case-review-hero__main"><div><div className="case-review-hero__title"><h1>{selectedCase.case_id}</h1><span className={`review-status status-${(selectedCase.status || 'New').toLowerCase().replace(' ', '-')}`}>{selectedCase.status || 'New'}</span></div><p>{selectedCase.description || 'Histology case'} <span>·</span> {selectedCase.slide_count} slide{selectedCase.slide_count === 1 ? '' : 's'} <span>·</span> Assigned to {selectedCase.reviewer || 'Unassigned'}</p></div><div className="case-review-hero__meta"><div><small>Patient / specimen ID</small><strong>{selectedCase.patient_identifier || selectedCase.patient_id || 'Not recorded'}</strong></div><div><small>Specimen type</small><strong>{selectedCase.specimen_type || selectedCase.description || 'Not recorded'}</strong></div><div><small>Case created</small><strong>{formatDate(selectedCase.created_at)}</strong></div><div><small>Status</small><strong>{selectedCase.status || 'New'}</strong></div></div></div>
+          <Tabs
+            className="case-review-tabs"
+            ariaLabel="Case sections"
+            value={caseSection}
+            onChange={(key) => {
+              const panel = key === 'details' ? 'review' : key === 'report' ? 'report' : null;
+              openCaseSection(key, panel);
+            }}
+            items={[
+              { value: 'slides', label: 'Slide comparison', icon: FileImage },
+              { value: 'details', label: 'Case details', icon: ClipboardCheck },
+              { value: 'report', label: 'Report', icon: Edit3 },
+            ]}
+          />
+        </section>}
+
+        {selectedCase && caseSection === 'details' && <section className="case-tab-page"><header><span>Case details</span><h2>{selectedCase.case_id}</h2></header><dl className="case-tab-detail-grid"><div><dt>Status</dt><dd>{selectedCase.status || 'New'}</dd></div><div><dt>Patient / specimen ID</dt><dd>{selectedCase.patient_identifier || selectedCase.patient_id || 'Not recorded'}</dd></div><div><dt>Specimen type</dt><dd>{selectedCase.specimen_type || 'Not recorded'}</dd></div><div><dt>Assigned pathologist</dt><dd>{selectedCase.reviewer || 'Unassigned'}</dd></div><div><dt>Created</dt><dd>{formatDate(selectedCase.created_at)}</dd></div><div><dt>Slides</dt><dd>{selectedCase.slide_count || 0}</dd></div></dl></section>}
+        {selectedCase && caseSection === 'report' && <section className="case-tab-page case-tab-page--report"><ReportEditor selectedCase={selectedCase} selectSlide={selectSlide} setMessage={reportMessage} onReportFinalized={refresh} /></section>}
+
+        {!isAuditorRole(user?.role) && (
+          <section className={`card form-card ${showCreateCase ? 'form-card--open' : ''}`}>
+            <button type="button" className="form-card-toggle" onClick={() => setShowCreateCase((value) => !value)} aria-expanded={showCreateCase}>
+              <span><Plus size={17} /><span><strong>Create case</strong><small>Add case details and an optional first slide.</small></span></span><ChevronDown size={18} />
+            </button>
+            {showCreateCase && <>
+              <form onSubmit={createCase} className="upload-form">
+                <PatientPicker value={selectedPatient} onChange={setSelectedPatient} initialPatientId={requestedPatientId} disabled={busy} />
+                <div className="form-grid case-create-grid">
+                  <Field label="Case ID *"><input name="case_id" required maxLength={80} placeholder="DEMO-001" /></Field>
+                  <Field label="Case description"><input name="description" placeholder="Specimen or case notes" /></Field>
+                  <Field label="Assign doctor"><select name="reviewer" disabled={busy || reviewersLoading || Boolean(reviewersError)}><option value="">Unassigned</option>{availableReviewers.map((reviewer) => <option key={reviewer.id} value={reviewer.username}>{reviewer.display_name || reviewer.username}</option>)}</select></Field>
+                  <Field label="First slide label"><input name="slide_label" defaultValue="Slide 1" /></Field>
+                  <Field label="Optional first slide"><input name="image" type="file" accept="image/jpeg,image/png,image/tiff,.svs,.tif,.tiff" /></Field>
+                  <button className="btn-primary" disabled={busy || !selectedPatient} title={selectedPatient ? undefined : 'Select a patient first'}><Plus size={18} /> Create case</button>
+                </div>
+              </form></>}
+          </section>
+        )}
+
+        <section className="columns case-workspace">
+          <aside className="sidebar-card">
+            <div className="sidebar-title-row"><h2>Cases</h2><span className="case-count-pill">{cases.length}</span></div>
+            <div className="worklist-tabs" role="tablist" aria-label="Case worklists">
+              {['All', 'My Cases', 'Unassigned', 'Awaiting Review', 'Completed'].map((tab) => (
+                <button key={tab} type="button" role="tab" aria-selected={worklistTab === tab} className={worklistTab === tab ? 'worklist-tab worklist-tab--active' : 'worklist-tab'} onClick={() => selectWorklist(tab)}>{tab}</button>
+              ))}
+            </div>
+            <div className="search-bar"><Search size={16} className="search-icon" />
+              <input placeholder="Search cases…" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>
+            <div className="archive-filters">
+              <select aria-label="Filter by status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                <option>All</option><option>New</option><option>In Review</option><option>Reviewed</option>
+              </select>
+              <select aria-label="Filter by reviewer" value={reviewerFilter} onChange={(e) => setReviewerFilter(e.target.value)}>
+                <option>All</option>{reviewers.map((reviewer) => <option key={reviewer}>{reviewer}</option>)}
+              </select>
+            </div>
+            <div className="cases-list-scroll">
+              {!cases.length ? <Empty icon={FileImage} title="No cases yet" text="Create a case above to begin." /> :
+                !filteredCases.length ? <Empty icon={Search} title="No matching cases" text="Try another worklist or clear the filters." /> :
+                  filteredCases.map((item) => <button type="button" key={item.id}
+                    className={`case ${item.id === selectedCaseId ? 'case-active' : ''}`} aria-pressed={item.id === selectedCaseId} onClick={() => selectCase(item)}>
+                    <div className="case-item-header"><strong className="case-id">{item.case_id}</strong>
+                      <span className="case-count-pill">{item.slide_count} slide{item.slide_count === 1 ? '' : 's'}</span></div>
+                    <p className="case-desc">{item.description || 'No case description'}</p>
+                    <div className="case-review-summary"><span className={`review-status status-${(item.status || 'New').toLowerCase().replace(' ', '-')}`}>{item.status || 'New'}</span>
+                      <span><UserRound size={12} /> {item.reviewer || 'Unassigned'}</span></div>
+                    <div className="case-footer"><Calendar size={12} /> {formatDate(item.created_at)}</div>
+                  </button>)}
+            </div>
+          </aside>
+
+          <section className="viewer-card multi-slide-card">
+            {!selectedCase ? <div className="viewer-placeholder"><Empty icon={Layers} title="Select a case" text="Open a case to view its slide tray." /></div> : <>
+              <div className="viewer-header">
+                <div className="viewer-info-title"><Layers size={20} color="var(--primary)" /><h2>{selectedCase.case_id}</h2>
+                  <span className="specimen-tag">{selectedCase.slide_count} slides</span></div>
+                <div className="viewer-header-actions">
+                  {isAdministratorRole(user?.role) && <button type="button" className="btn-control-secondary btn-case-remove" onClick={() => setDeleteCaseTarget(selectedCase)}><Trash2 size={15} /> Remove case</button>}
+                  {!isAuditorRole(user?.role) && (
+                    <button type="button" className="btn-control-secondary" onClick={() => setShowSlideForm((value) => !value)}><Upload size={15} /> Add slide</button>
+                  )}
+                </div>
+>>>>>>> 98966c4f81d1d85563cd464cab05d11dd6a057b7
               </div>
             </div>
 
@@ -688,55 +767,87 @@ export default function App() {
                   <div className="review-empty review-empty--auditor">
                     <span>Auditor mode: Read-only access to case records and history.</span>
                   </div>
-                ) : (
-                  <div className="review-controls">
-                    <form onSubmit={(event) => updateReview(event, 'reviewer', 'Reviewer updated.')}>
-                      <Field label="Assigned reviewer">
-                        <select
-                          name="reviewer"
-                          key={`reviewer-${selectedCase.id}-${selectedCase.reviewer}`}
-                          defaultValue={selectedCase.reviewer || ''}
-                          disabled={reviewersLoading || Boolean(reviewersError)}
-                          aria-describedby={reviewersError ? 'reviewer-load-error' : undefined}
-                        >
-                          <option value="">Unassigned</option>
-                          {selectedCase.reviewer && !availableReviewers.some((reviewer) => reviewer.username === selectedCase.reviewer) && (
-                            <option value={selectedCase.reviewer}>{selectedCase.reviewer} (currently assigned)</option>
-                          )}
-                          {availableReviewers.map((reviewer) => (
-                            <option key={reviewer.id} value={reviewer.username}>
-                              {reviewer.display_name || reviewer.username}{reviewer.display_name && reviewer.display_name !== reviewer.username ? ` (${reviewer.username})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                        {reviewersLoading && <small className="reviewer-field-message">Loading pathologists…</small>}
-                        {reviewersError && <small id="reviewer-load-error" className="reviewer-field-message reviewer-field-message--error">Pathologists could not be loaded.</small>}
-                        {!reviewersLoading && !reviewersError && !availableReviewers.length && <small className="reviewer-field-message">No active pathologists are available.</small>}
-                      </Field>
+                </section>}
 
-                      <button className="btn-control-secondary" disabled={busy || reviewersLoading || Boolean(reviewersError) || !availableReviewers.length}>Assign</button>
-                    </form>
-                    <form onSubmit={(event) => updateReview(event, 'status', 'Case status updated.')}>
-                      <Field label="Status">
-                        <select
-                          name="status"
-                          key={`status-${selectedCase.id}-${selectedCase.status}`}
-                          defaultValue={selectedCase.status || 'New'}
-                        >
-                          {CASE_STATUS_OPTIONS.map((status) => (
-                            <option key={status} value={status}>
-                              {status}
-                            </option>
-                          ))}
-                        </select>
-                      </Field>
-                      <button className="btn-control-secondary" disabled={busy}>Change status</button>
-                    </form>
-                    <form className="review-note-form" onSubmit={addReviewNote}>
+                {inspectorTab === 'timeline' && <section className="review-panel inspector-tab-content" key={`timeline-${selectedCase.id}`}>
+                  <div className="review-panel-title"><Clock size={17} /><div><h3>Audit & Case Timeline</h3><span>Historical lifecycle events for case {selectedCase.case_id}.</span></div></div>
+                  {timelineLoading ? <p className="review-empty">Loading case timeline…</p> :
+                    !caseTimelineEvents.length ? <p className="review-empty">No recorded timeline events.</p> :
+                      <div className="timeline-list">
+                        {caseTimelineEvents.map((evt, idx) => (
+                          <div key={idx} className="timeline-item">
+                            <span className="timeline-badge">{evt.event_type}</span>
+                            <div><strong>{evt.summary}</strong>{evt.actor && <small className="link-item-author">by {evt.actor}</small>}</div>
+                            <time className="timeline-time" dateTime={evt.event_at}>{formatDate(evt.event_at)}</time>
+                          </div>
+                        ))}
+                      </div>}
+                </section>}
 
-                      <Field label="Review note *"><textarea name="note" required maxLength={4000} rows={2} placeholder="Add a case-level review note" /></Field>
-                      <button className="btn-control-secondary" disabled={busy}>Add note</button>
-                    </form>
+                {inspectorTab === 'links' && <section className="review-panel inspector-tab-content" key={`links-${selectedCase.id}`}>
+                  <div className="review-panel-title"><Link2 size={17} /><div><h3>Related Cases</h3><span>Links to prior or associated patient cases.</span></div></div>
+                  {linksLoading ? <p className="review-empty">Loading related cases…</p> :
+                    !caseRelatedLinks.length ? <p className="review-empty">No linked prior cases.</p> :
+                      <div className="links-list">
+                        {caseRelatedLinks.map((link) => (
+                          <div key={link.id} className="link-item">
+                            <div><strong>Case #{link.related_case_id === selectedCase.id ? link.case_id : link.related_case_id}</strong> <small>({link.link_type})</small>
+                              {link.reason && <p className="link-item-reason">{link.reason}</p>}</div>
+                            <small className="link-item-author">by {link.created_by}</small>
+                          </div>
+                        ))}
+                      </div>}
+                </section>}
+
+                {inspectorTab === 'report' && <ReportEditor selectedCase={selectedCase} selectSlide={selectSlide} setMessage={reportMessage} onReportFinalized={refresh} />}
+              </aside>
+
+              {showSlideForm && !(selectedCase.slides || []).length && slideUploadForm}
+
+              {!(selectedCase.slides || []).length ? <div className="viewer-placeholder case-empty">
+                <Empty icon={FileImage} title="This case has no slides" text="Use Add Slide to attach a JPG, PNG, SVS, or TIFF file." />
+              </div> : <>
+                <div className="slide-tray" aria-label="Case slide tray">
+                  <div className="slide-tray-heading"><strong>Slides ({selectedCase.slides.length})</strong><button type="button" className="btn-control-secondary" onClick={() => setShowSlideForm((value) => !value)}><Plus size={13} /> Add</button></div>
+                  {selectedCase.slides.map((slide) => <div key={slide.id} className={`tray-item ${slide.id === selectedSlideId ? 'tray-active' : ''} ${compareSlideIds.includes(slide.id) ? 'tray-compare-active' : ''}`}>
+                    <button type="button" className="tray-select" onClick={() => selectSlide(slide)}>
+                      <img src={slide.thumbnail_url} alt={`${slide.label} thumbnail`} loading="lazy" />
+                      <span className="tray-copy"><strong>{slide.label}</strong><small>{slide.stain || 'Unspecified stain'}</small>
+                        <span><b>{slide.file_type === 'wsi' ? 'WSI' : slide.format}</b><i className={`upload-state ${slide.upload_state}`}>{slide.upload_state}</i>
+                          {slide.qc_status && <span className={`qc-badge qc-${slide.qc_status.replace(/\s+/g, '-').toLowerCase()}`}>{slide.qc_status}</span>}
+                        </span></span>
+                    </button>
+                    <button type="button" className="tray-compare" disabled={slide.id === selectedSlideId || (openScreenCount >= MAX_VIEWER_SCREENS && !compareSlideIds.includes(slide.id))} aria-label={compareSlideIds.includes(slide.id) ? `Remove ${slide.label} from multi-screen view` : `Add ${slide.label} to multi-screen view`} aria-pressed={compareSlideIds.includes(slide.id)} title={slide.id === selectedSlideId ? 'Primary screen' : openScreenCount >= MAX_VIEWER_SCREENS && !compareSlideIds.includes(slide.id) ? 'Maximum 4 screens reached' : compareSlideIds.includes(slide.id) ? 'Remove screen' : 'Add screen'} onClick={() => toggleScreenSlide(slide)}><Columns size={14} /></button>
+                    <button type="button" className="tray-edit" aria-label={`Edit ${slide.label}`} title="Edit slide details" onClick={() => setEditingSlideId(slide.id)}><Edit3 size={14} /></button>
+                    {canRemoveSlides && <button type="button" className="tray-delete" aria-label={`Remove ${slide.label}`} title="Remove slide" onClick={() => setDeleteSlideTarget(slide)}><Trash2 size={14} /></button>}
+                  </div>)}
+                </div>
+                {slideUploadForm}
+
+                {selectedSlide && editingSlideId === selectedSlide.id && <form className="edit-slide-form" onSubmit={(event) => saveSlide(event, selectedSlide)}>
+                  <Field label="Label"><input name="label" required defaultValue={selectedSlide.label} /></Field>
+                  <Field label="Stain"><input name="stain" defaultValue={selectedSlide.stain} /></Field>
+                  <Field label="Specimen description"><input name="specimen_description" defaultValue={selectedSlide.specimen_description} /></Field>
+                  <button className="btn-primary" disabled={busy}>Save</button>
+                  <button type="button" className="btn-control-secondary" onClick={() => setEditingSlideId(null)}>Cancel</button>
+                </form>}
+
+                {selectedSlide && editingSlideId === selectedSlide.id && ['Laboratory Manager', 'Pathologist', SYSTEM_ADMIN_ROLE, SUPER_ADMIN_ROLE].includes(user?.role) && <form className="edit-slide-form qc-form" onSubmit={(event) => saveSlideQc(event, selectedSlide)}>
+                  <h4 className="qc-title">Quality control</h4>
+                  <Field label="Status">
+                    <select name="qc_status" defaultValue={selectedSlide.qc_status || ''}>
+                      <option value="">None</option>
+                      <option value="Pass">Pass</option>
+                      <option value="Needs rescan">Needs rescan</option>
+                      <option value="Cannot assess">Cannot assess</option>
+                    </select>
+                  </Field>
+                  <div className="qc-defects">
+                    <label><input type="checkbox" name="qc_missing_tissue" defaultChecked={selectedSlide.qc_missing_tissue} /> Missing tissue</label>
+                    <label><input type="checkbox" name="qc_blur" defaultChecked={selectedSlide.qc_blur} /> Blur</label>
+                    <label><input type="checkbox" name="qc_scan_artifact" defaultChecked={selectedSlide.qc_scan_artifact} /> Scan artifact</label>
+                    <label><input type="checkbox" name="qc_incorrect_label" defaultChecked={selectedSlide.qc_incorrect_label} /> Incorrect label</label>
+                    <label><input type="checkbox" name="qc_unusual_staining" defaultChecked={selectedSlide.qc_unusual_staining} /> Unusual staining</label>
                   </div>
                 )}
                 <div className="review-records">
