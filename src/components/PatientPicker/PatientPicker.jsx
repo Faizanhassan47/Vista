@@ -24,7 +24,7 @@ function patientSummary(patient) {
  * Search patients by name, patient ID or MRN. When nothing matches, a new patient
  * can be registered inline and is selected automatically.
  */
-export default function PatientPicker({ value, onChange, initialPatientId = null, disabled = false }) {
+export default function PatientPicker({ value, onChange, initialPatientId = null, disabled = false, selectedDisplay = 'name' }) {
   const inputId = useId();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -83,7 +83,7 @@ export default function PatientPicker({ value, onChange, initialPatientId = null
     <label htmlFor={inputId} className="patient-picker__label">Patient *</label>
     {value ? <div className="patient-picker__selected">
       <UserRound size={16} aria-hidden="true" />
-      <span><strong>{value.display_label || `${value.first_name} ${value.last_name}`}</strong><small>{patientSummary(value)}</small></span>
+      <span><strong>{selectedDisplay === 'identifier' ? (value.patient_identifier || 'Patient ID unavailable') : (value.display_label || `${value.first_name} ${value.last_name}`)}</strong><small>{patientSummary(value)}</small></span>
       <button type="button" className="patient-picker__clear" onClick={() => onChange(null)} disabled={disabled} aria-label="Change patient"><X size={14} /></button>
     </div> : <>
       <div className="patient-picker__search"><Search size={16} aria-hidden="true" />

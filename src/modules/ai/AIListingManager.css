@@ -106,6 +106,16 @@
     gap: var(--spacing-xs);
 }
 
+.ai-listing-manager__availability {
+    color: var(--color-text-muted);
+    font-size: var(--font-size-xs);
+    text-align: center;
+}
+
+.ai-listing-manager__availability--active {
+    color: var(--color-success-text);
+}
+
 .ai-listing-manager__empty {
     grid-column: 1 / -1;
     text-align: center;
@@ -174,7 +184,7 @@
 }
 
 .ai-listing-form select {
-    color-scheme: dark;
+    color-scheme: light;
 }
 
 .ai-listing-form select option {

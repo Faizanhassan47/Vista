@@ -9,6 +9,7 @@ async function request(path, options = {}) {
 }
 
 export const caseService = {
+  nextId: (signal) => request('/api/cases/next-id', { signal }),
   list: (paramsOrSignal = {}, optionalSignal) => {
     const signal = paramsOrSignal?.aborted !== undefined ? paramsOrSignal : optionalSignal;
     const params = paramsOrSignal?.aborted !== undefined ? {} : paramsOrSignal;
