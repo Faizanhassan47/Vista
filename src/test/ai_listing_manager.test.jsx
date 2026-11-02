@@ -42,4 +42,13 @@ describe('AIListingManager', () => {
     expect(onRemove).toHaveBeenCalledWith(hoverNet);
     window.confirm.mockRestore();
   });
+
+  it('allows a super administrator to enable a globally disabled model', () => {
+    const disabledModel = { ...hoverNet, is_active: false };
+    const onToggleFeature = vi.fn();
+    render(<AIListingManager features={[disabledModel]} onSave={vi.fn()} onRemove={vi.fn()} onToggleFeature={onToggleFeature} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Enable model' }));
+    expect(onToggleFeature).toHaveBeenCalledWith(disabledModel);
+  });
 });

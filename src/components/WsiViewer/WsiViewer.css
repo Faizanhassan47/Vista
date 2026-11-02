@@ -16,15 +16,15 @@
   height: 100%;
 }
 
-/* Clinical comparison view uses a light image surface like the case-review reference. */
-.layout--case-review .viewer-canvas-container,
-.layout--case-review .wsi-stage,
-.layout--case-review .wsi-stage .wsi-viewer,
-.layout--case-review .wsi-stage .wsi-viewer canvas {
-  background: #ffffff;
+/* Keep empty space around slides black, including the canvas OpenSeadragon styles inline. */
+.case-review .viewer-canvas-container,
+.case-review .wsi-stage,
+.case-review .wsi-stage .wsi-viewer,
+.case-review .wsi-stage .openseadragon-canvas {
+  background: #000000 !important;
 }
 
-.layout--case-review .viewer-canvas-container {
+.case-review .viewer-canvas-container {
   border: 1px solid #dbe3ea;
   border-radius: 8px;
   overflow: hidden;
@@ -758,9 +758,9 @@
 }
 
 .tool-active {
-  color: #b8ebe6;
-  border-color: #5fb6ae;
-  background: #203532;
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
 }
 
 .annotation-overlay {

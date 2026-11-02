@@ -47,7 +47,6 @@
 
 .activity-summary svg {
   grid-row: span 2;
-  color: var(--color-primary);
 }
 
 .activity-summary span {
@@ -84,54 +83,6 @@
 .btn-station-configure {
   font-size: var(--font-size-xs);
   padding: var(--space-1) var(--space-3);
-}
-
-.activity-controls {
-  display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(180px, 240px);
-  gap: var(--space-4);
-  align-items: end;
-  margin-bottom: var(--space-4);
-}
-
-.activity-controls label {
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-}
-
-.activity-controls input,
-.activity-controls select {
-  width: 100%;
-  height: var(--control-height);
-  margin-top: var(--space-1);
-  color: var(--color-text);
-  background: var(--color-surface);
-  border: var(--border-width) solid var(--color-border-strong);
-  border-radius: var(--radius-sm);
-  font: inherit;
-}
-
-.activity-controls input:focus,
-.activity-controls select:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: var(--focus-ring);
-}
-
-.activity-search {
-  position: relative;
-}
-
-.activity-search svg {
-  position: absolute;
-  left: var(--space-4);
-  bottom: 11px;
-  color: var(--color-text-muted);
-  pointer-events: none;
-}
-
-.activity-search input {
-  padding: 0 var(--space-4) 0 38px;
 }
 
 .activity-table-wrap {
@@ -254,9 +205,6 @@
   background: var(--color-primary-soft);
 }
 
-.activity-outcome {
-  background: var(--color-success-soft);
-}
 
 .activity-empty {
   padding: var(--space-12) !important;
@@ -276,7 +224,6 @@
     flex-direction: column;
   }
 
-  .activity-controls,
   .activity-summary {
     grid-template-columns: 1fr;
   }

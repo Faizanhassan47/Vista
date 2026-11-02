@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ClipboardList, Eye, LayoutList, MoreHorizontal, Plus, Search, SlidersHorizontal, Table2, Trash2, X } from 'lucide-react';
+import { ChevronRight, ClipboardList, Eye, LayoutList, MoreHorizontal, Plus, Search, SlidersHorizontal, Table2, Trash2, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { caseService } from '../../services/caseService';
 import { platformService } from '../../services/platformService';
@@ -8,6 +8,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { isAdministratorRole } from '../../config/roles';
 import { notifyClinicalDataChanged } from '../../services/clinicalDataEvents';
 import Pagination from '../../components/Pagination/Pagination';
+import FilterBar from '../../components/FilterBar/FilterBar';
 import './CaseLibrary.css';
 
 function formatDate(value) {
@@ -24,11 +25,18 @@ export default function CaseLibrary() {
   const { user } = useAuth();
   const [cases, setCases] = useState([]);
   const [query, setQuery] = useState('');
+  const [patientIdFilter, setPatientIdFilter] = useState('');
+  const [patientNameFilter, setPatientNameFilter] = useState('');
+  const [caseIdFilter, setCaseIdFilter] = useState('');
+  const [pathologistFilter, setPathologistFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [status, setStatus] = useState('All');
   const [assignedToMe, setAssignedToMe] = useState(false);
   const [sort, setSort] = useState('created_at:desc');
   const [view, setView] = useState('table');
+  useEffect(() => { setView('table'); }, []);
   const [page, setPage] = useState(0);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -53,8 +61,9 @@ export default function CaseLibrary() {
     const [sort_by, sort_direction] = sort.split(':');
     caseService.list({ search: debouncedQuery, status: status === 'All' ? null : status, assigned_to_me: assignedToMe || null, sort_by, sort_direction, limit: pageSize, offset: page * pageSize }, controller.signal)
       .then((data) => {
-        setCases(Array.isArray(data) ? data : data.items || []);
-        setTotal(Array.isArray(data) ? data.length : data.total || 0);
+        const items = Array.isArray(data) ? data : Array.isArray(data?.items) ? data.items : [];
+        setCases(items);
+        setTotal(Array.isArray(data) ? items.length : Number(data?.total) || 0);
       })
       .catch((err) => { if (err.name !== 'AbortError') setError(err.message || 'Unable to load cases.'); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
@@ -70,6 +79,37 @@ export default function CaseLibrary() {
     return () => window.removeEventListener('pointerdown', closeMenu);
   }, []);
   const active = selected || cases[0] || null;
+  const filterSuggestions = (getValue) => {
+    const seen = new Set();
+    return cases
+      .map(getValue)
+      .filter((value) => value !== null && value !== undefined && String(value).trim())
+      .map((value) => String(value).trim())
+      .filter((value) => {
+        const key = value.toLocaleLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  };
+  const patientIdSuggestions = filterSuggestions((caseItem) => caseItem.patient_identifier || caseItem.patient_id || caseItem.medical_record_number);
+  const patientNameSuggestions = filterSuggestions((caseItem) => caseItem.patient_name);
+  const caseIdSuggestions = filterSuggestions((caseItem) => caseItem.case_id || `Case ${caseItem.id}`);
+  const pathologistSuggestions = filterSuggestions((caseItem) => caseItem.reviewer);
+  const autocompleteField = (label, value, onChange, suggestions) => ({ label, value, onChange, suggestions });
+  const visibleCases = cases.filter((caseItem) => {
+    const matches = (value, term) => !term.trim() || String(value || '').toLowerCase().includes(term.trim().toLowerCase());
+    const createdAt = caseItem.created_at ? new Date(caseItem.created_at) : null;
+    const createdTime = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.getTime() : null;
+    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const toExclusive = dateTo ? new Date(`${dateTo}T00:00:00`).getTime() + 86400000 : null;
+    return matches(caseItem.patient_id, patientIdFilter)
+      && matches(caseItem.patient_name, patientNameFilter)
+      && matches(caseItem.case_id, caseIdFilter)
+      && matches(caseItem.reviewer, pathologistFilter)
+      && (!dateFrom || (createdTime !== null && createdTime >= fromTime))
+      && (!dateTo || (createdTime !== null && createdTime < toExclusive));
+  });
   const canDeleteCases = isAdministratorRole(user?.role);
   const canCreateCases = isAdministratorRole(user?.role) || user?.role === 'Laboratory Manager / Supervisor';
   const applySavedView = (viewName) => {
@@ -99,6 +139,15 @@ export default function CaseLibrary() {
 
   return <main className="case-library" id="main-content">
 
+    {canCreateCases && <div className="case-library__create-row"><Link to="/cases?createCase=1" className="case-library__create-reference">+ Create New Case</Link></div>}
+    <FilterBar title="Select Case" layout="case-reference" fields={[
+      autocompleteField('Patient ID', patientIdFilter, setPatientIdFilter, patientIdSuggestions),
+      autocompleteField('Patient Name', patientNameFilter, setPatientNameFilter, patientNameSuggestions),
+      autocompleteField('Case ID', caseIdFilter, setCaseIdFilter, caseIdSuggestions),
+      autocompleteField('Pathologist', pathologistFilter, setPathologistFilter, pathologistSuggestions),
+      { label: 'Dated', type: 'dateRange', from: dateFrom, to: dateTo, onFromChange: setDateFrom, onToChange: setDateTo },
+      { label: 'Status', type: 'select', value: status, onChange: (value) => { setAssignedToMe(false); setStatus(value); }, options: [{ value: 'All', label: '--- Select ---' }, { value: 'New', label: 'Awaiting review' }, { value: 'In Review', label: 'In review' }, { value: 'Reviewed', label: 'Reviewed' }] },
+    ]} />
     <section className="case-library__filters" aria-label="Case library filters"><label className="case-library__search">
       <Search size={17} />
       <span className="sr-only">Search cases</span>
@@ -108,19 +157,23 @@ export default function CaseLibrary() {
 
     <div className={`case-library__layout${view === 'table' ? ' case-library__layout--worklist' : ''}`}>
       <section>
-        <p className="case-library__count">{total} case{total === 1 ? '' : 's'}</p>
-        {view === 'table' ? <div className="case-library__data-table-wrap"><table className="case-library__data-table"><thead><tr><th>Case / patient</th><th>Specimen</th><th>Slides</th><th>Assigned to</th><th>Status</th><th>Priority</th><th>Created</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>
-          {loading ? Array.from({ length: 5 }, (_, index) => <tr key={index}><td colSpan="8"><div className="case-library__table-skeleton" aria-hidden="true" /></td></tr>) : cases.map((caseItem) => {
-            const itemStatus = caseStatus(caseItem);
+
+        {view === 'table' ? <div className="case-library__data-table-wrap"><table className="case-library__data-table case-library__data-table--reference"><thead><tr><th>Sr. #</th><th>Case ID</th><th>Patient ID</th><th>Patient Name</th><th>Pathologist</th><th>Slides</th><th>Created At</th><th>Updated At</th><th><span className="sr-only">Open case</span></th></tr></thead><tbody>
+          {loading ? Array.from({ length: 5 }, (_, index) => <tr key={index}><td colSpan="9"><div className="case-library__table-skeleton" aria-hidden="true" /></td></tr>) : visibleCases.map((caseItem, rowIndex) => {
             const slides = caseItem.slide_count ?? caseItem.slides?.length ?? 0;
             return <tr key={caseItem.id}>
-              <td><Link className="case-library__case-cell" to={`/cases?case=${caseItem.id}`}><span className="case-library__card-icon"><ClipboardList size={18} /></span><span><strong>{caseItem.case_id || `Case ${caseItem.id}`}</strong><small>{caseItem.patient_name || caseItem.patient_id || 'Patient not recorded'}</small></span></Link></td>
-              <td><strong>{caseItem.specimen_type || caseItem.description || 'Not recorded'}</strong><small>{caseItem.diagnosis || caseItem.description || 'Clinical details not recorded'}</small></td>
-              <td>{slides}</td><td>{caseItem.reviewer || 'Unassigned'}</td><td><span className={`case-library__status case-library__status--${itemStatus.toLowerCase().replace(/\s+/g, '-')}`}>{itemStatus}</span></td><td><span className="case-library__priority">{caseItem.priority || 'Not set'}</span></td><td>{formatDate(caseItem.created_at)}</td>
-              <td><div className="case-library__row-actions" ref={actionMenuCaseId === caseItem.id ? actionMenuRef : null}><button type="button" className="case-library__row-action" onClick={() => setActionMenuCaseId((current) => current === caseItem.id ? null : caseItem.id)} aria-label={`Actions for ${caseItem.case_id || `case ${caseItem.id}`}`} aria-expanded={actionMenuCaseId === caseItem.id}><MoreHorizontal size={18} /></button>{actionMenuCaseId === caseItem.id && <div className="case-library__action-menu" role="menu"><Link to={`/cases?case=${caseItem.id}`} role="menuitem" onClick={() => setActionMenuCaseId(null)}><Eye size={15} />Open case workspace</Link>{canDeleteCases && <button type="button" role="menuitem" onClick={() => { setActionMenuCaseId(null); setCasePendingRemoval(caseItem); }}><Trash2 size={15} />Remove case</button>}</div>}</div></td>
+              <td>{page * pageSize + rowIndex + 1}</td>
+              <td>{caseItem.case_id || `Case ${caseItem.id}`}</td>
+              <td>{caseItem.patient_identifier || caseItem.patient_id || caseItem.medical_record_number || 'Not recorded'}</td>
+              <td>{caseItem.patient_name || 'Not recorded'}</td>
+              <td>{caseItem.reviewer || 'Unassigned'}</td>
+              <td>{String(slides).padStart(2, '0')}</td>
+              <td>{formatDate(caseItem.created_at)}</td>
+              <td>{formatDate(caseItem.updated_at || caseItem.created_at)}</td>
+              <td><div className="case-library__row-actions" ref={actionMenuCaseId === caseItem.id ? actionMenuRef : null}><Link className="case-library__row-open" to={`/cases?case=${caseItem.id}`} aria-label={`Open ${caseItem.case_id || `case ${caseItem.id}`}`}><ChevronRight size={18} /></Link>{canDeleteCases && <><button type="button" className="case-library__row-action" onClick={() => setActionMenuCaseId((current) => current === caseItem.id ? null : caseItem.id)} aria-label={`More actions for ${caseItem.case_id || `case ${caseItem.id}`}`} aria-expanded={actionMenuCaseId === caseItem.id}><MoreHorizontal size={18} /></button>{actionMenuCaseId === caseItem.id && <div className="case-library__action-menu" role="menu"><button type="button" role="menuitem" onClick={() => { setActionMenuCaseId(null); setCasePendingRemoval(caseItem); }}><Trash2 size={15} />Remove case</button></div>}</>}</div></td>
             </tr>;
           })}
-          {!loading && !cases.length && <tr><td colSpan="8"><div className="case-library__empty"><ClipboardList size={26} /><strong>No cases found</strong><span>Adjust the search or status filter to find a case.</span></div></td></tr>}
+          {!loading && !visibleCases.length && <tr><td colSpan="9"><div className="case-library__empty"><ClipboardList size={26} /><strong>No cases found</strong><span>Adjust the search or status filter to find a case.</span></div></td></tr>}
         </tbody></table></div> : <div className="case-library__list">
           {loading ? Array.from({ length: 5 }, (_, index) => <div key={index} className="case-library__skeleton" aria-hidden="true" />) : cases.map((caseItem) => {
             const status = caseStatus(caseItem);
@@ -164,3 +217,5 @@ export default function CaseLibrary() {
     <Modal open={Boolean(casePendingRemoval)} title="Remove case" onClose={() => !removing && setCasePendingRemoval(null)} footer={<><button type="button" className="modal-button modal-button--secondary" disabled={removing} onClick={() => setCasePendingRemoval(null)}>Cancel</button><button type="button" className="modal-button btn-delete" disabled={removing} onClick={removeCase}>{removing ? 'Removing…' : 'Remove case'}</button></>}><p className="confirmation-copy">Remove case <strong>{casePendingRemoval?.case_id}</strong>? All associated slides, annotations, drafts, and non-finalized reports will be removed. Source files are moved to protected deleted storage.</p></Modal>
   </main>;
 }
+
+

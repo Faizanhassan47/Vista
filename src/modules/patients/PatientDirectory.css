@@ -2,7 +2,6 @@
     min-height: 100vh;
     padding: var(--spacing-xl);
     color: var(--color-text);
-    background: var(--color-background);
 }
 
 .patient-directory__header {
@@ -30,55 +29,33 @@
     flex-wrap: wrap;
 }
 
-.patient-directory__filters,
-.patient-directory__card {
+.patient-directory__body {
+    width: 100%;
     max-width: 1400px;
-    margin: 0 auto var(--spacing-md);
+    margin: 0 auto;
+}
+
+.patient-directory__card {
+    margin: 0 0 var(--spacing-md);
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-surface);
 }
 
 .patient-directory__filters {
-    display: grid;
-    grid-template-columns: minmax(260px, 1fr) 220px auto;
-    gap: var(--spacing-md);
-    padding: var(--spacing-md);
+    margin: 0 0 var(--spacing-md);
 }
 
-.patient-directory__register { align-self: end; justify-content: center; }
-
-.patient-directory__filters label {
-    display: grid;
-    gap: var(--spacing-xs);
-    color: var(--color-text-muted);
-    font-size: var(--font-size-sm);
+.patient-directory__filters .library-filters__grid {
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto;
+    align-items: end;
 }
 
-.patient-directory__search {
-    display: flex;
-    align-items: center;
-    gap: var(--spacing-sm);
-    padding: 0 var(--spacing-md);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-subtle);
-}
-
-.patient-directory__search input,
-.patient-directory__filters select {
-    width: 100%;
-    min-height: var(--control-height);
-    color: var(--color-text);
-    border: 0;
-    background: transparent;
-}
-
-.patient-directory__filters select {
-    padding: 0 var(--spacing-md);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius-md);
-    background: var(--color-surface-subtle);
+.patient-directory__register {
+    align-self: end;
+    justify-content: center;
+    min-height: 40px;
+    white-space: nowrap;
 }
 
 .patient-directory__card>header {
@@ -231,9 +208,12 @@
         flex-direction: column;
     }
 
-    .patient-directory__filters,
     .patient-form__grid {
         grid-template-columns: 1fr;
+    }
+
+    .patient-directory__filters .library-filters__grid {
+        grid-template-columns: minmax(0, 1fr);
     }
 }
 

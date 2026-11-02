@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, RefreshCw, Search, ShieldCheck, MapPin } from 'lucide-react';
+import { Activity, RefreshCw, ShieldCheck, MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAuditEvents } from '../../services/auditService';
 import {
@@ -11,6 +11,7 @@ import {
 } from '../../services/deviceService';
 import Modal from '../Modal/Modal';
 import Field from '../Field/Field';
+import FilterBar from '../FilterBar/FilterBar';
 import { auditCategories, describeAuditEvent } from './activityLog';
 import './AdministrationLogs.css';
 
@@ -69,6 +70,13 @@ export default function AdministrationLogs() {
   };
 
   const categories = useMemo(() => auditCategories(events), [events]);
+  const searchSuggestions = useMemo(() => {
+    const values = events.flatMap((event) => {
+      const description = describeAuditEvent(event);
+      return [event.actor_username, description.title, description.explanation, event.target_id, event.ip_address, event.device_location, event.device_name];
+    }).filter((value) => value !== null && value !== undefined && String(value).trim());
+    return [...new Set(values.map(String))];
+  }, [events]);
   const visibleEvents = useMemo(() => events.filter((event) => {
     const description = describeAuditEvent(event);
     const matchesCategory = category === 'All' || description.category === category;
@@ -122,20 +130,10 @@ export default function AdministrationLogs() {
         </button>
       </article>
     </div>
-    <div className="activity-controls">
-      <label className="activity-search">
-        <span>Search activity</span>
-        <Search size={16} aria-hidden="true" />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search people, actions, IP or records" />
-      </label>
-      <label>
-        <span>Activity type</span>
-        <select value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option>All</option>
-          {categories.map((item) => <option key={item}>{item}</option>)}
-        </select>
-      </label>
-    </div>
+    <FilterBar layout="toolbar" fields={[
+      { label: 'Search activity', type: 'text', value: query, onChange: setQuery, placeholder: 'Search people, actions, IP or records', suggestions: searchSuggestions },
+      { label: 'Activity type', type: 'select', value: category, onChange: setCategory, options: [{ value: 'All', label: 'All' }, ...categories.map((item) => ({ value: item, label: item }))] },
+    ]} />
     <div className="activity-table-wrap">
       <table className="activity-table">
         <thead>
@@ -220,3 +218,4 @@ export default function AdministrationLogs() {
     </Modal>
   </section>;
 }
+
