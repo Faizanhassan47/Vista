@@ -9,6 +9,7 @@ import { APP_NAME } from './config';
 import AppRouter from './routes/AppRouter';
 
 document.title = APP_NAME;
+document.documentElement.dataset.theme = 'vista';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

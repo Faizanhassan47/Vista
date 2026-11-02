@@ -1,10 +1,13 @@
 import { useEffect, useState } from 'react';
-import { Eye, EyeOff, Microscope } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from './AuthProvider';
 import './Login.css';
 import Button from '../../components/Button/Button';
 import { platformService } from '../../services/platformService';
+import microscopeImage from '../../assets/logo and images/logiin VISTA.png';
+import vistaLogo from '../../assets/logo and images/VISTA logo .png';
+import visoleLogo from '../../assets/logo and images/Visole.png';
 
 export default function Login() {
   const { login, sessionExpired } = useAuth();
@@ -19,12 +22,7 @@ export default function Login() {
     const controller = new AbortController();
     platformService.branding(controller.signal).then((data) => {
       setBranding((current) => ({ ...current, ...data }));
-      if (data.theme) document.documentElement.dataset.theme = data.theme;
-      if (data.primaryColor) {
-        document.documentElement.style.setProperty('--color-primary', data.primaryColor);
-        document.documentElement.style.setProperty('--primary', data.primaryColor);
-      }
-      if (data.secondaryColor) document.documentElement.style.setProperty('--color-accent', data.secondaryColor);
+      document.documentElement.dataset.theme = 'vista';
     }).catch(() => {});
     return () => controller.abort();
   }, []);
@@ -38,13 +36,16 @@ export default function Login() {
   };
 
   return <main className="login-container">
-    <section className="login-box" aria-labelledby="login-title">
-      <header className="login-header">
-        <div className="login-logo" aria-hidden="true">{branding.logo ? <img src={branding.logo} alt="" /> : <Microscope size={27} />}</div>
-        <p className="login-eyebrow">Laboratory workspace</p>
-        <h1 id="login-title">{branding.title}</h1>
-        <p className="login-subtitle">{branding.subtitle}</p>
-      </header>
+    <section className="login-visual" aria-label="Digital pathology laboratory">
+      <img className="login-visual__image" src={microscopeImage} alt="Microscope" />
+    </section>
+    <section className="login-panel" aria-labelledby="login-title">
+      <div className="login-panel__content">
+        <header className="login-header">
+          <img className="login-brand" src={branding.logo || vistaLogo} alt="VISTA" />
+          <h1 id="login-title">Sign in</h1>
+          <p className="login-subtitle">{branding.subtitle}</p>
+        </header>
       {sessionExpired && (
         <div className="login-session-expired-banner" role="alert">
           Session expired — please sign in again
@@ -66,9 +67,14 @@ export default function Login() {
           </div>
           {capsLock && <p className="field-hint field-hint--warning" role="status">Caps Lock is on.</p>}
         </div>
-        <button type="submit" disabled={loading}>{loading ? <><span className="loading-spinner loading-spinner--button" /> Signing in…</> : 'Sign in'}</button>
+        <Button type="submit" loading={loading}>Sign in</Button>
       </form>
-      <p className="login-disclaimer">Authorized laboratory use only. This prototype is not a diagnostic system.</p>
+        <p className="login-disclaimer">Authorized laboratory use only. This prototype is not a diagnostic system.</p>
+      </div>
+      <footer className="login-panel__footer">
+        <span>VISTA® (Visual Imaging, Scanning &amp; Tissue Analysis) developed by</span>
+        <img src={visoleLogo} alt="Visole Group of Companies" />
+      </footer>
     </section>
   </main>;
 }

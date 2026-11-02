@@ -7,10 +7,10 @@
   --bg-card-border: #dce2e7;
   --bg-inner: #f7f9fa;
   --bg-canvas: #171b1e;
-  --primary: #287f87;
-  --primary-hover: #1f6970;
-  --primary-dark: #18565c;
-  --primary-glow: rgba(40, 127, 135, 0.14);
+  --primary: #CA3D33;
+  --primary-hover: #a8322b;
+  --primary-dark: #842720;
+  --primary-glow: rgba(202, 61, 51, 0.14);
   --text-main: #202b33;
   --text-muted: #52616b;
   --text-dim: #5c6c77;
@@ -20,11 +20,29 @@
   --surface-hover: #edf3f4;
   --background: #ffffff;
   --text: #202b33;
-  --accent-color: #131718;
+  --accent-color: #CA3D33;
   --radius-lg: 6px;
   --radius-md: 5px;
   --radius-sm: 4px;
   --shadow-lg: 0 1px 3px rgba(20, 34, 43, 0.08);
+  --color-primary: #CA3D33;
+  --color-primary-hover: #a8322b;
+  --color-primary-light: #fae9e8;
+  --color-accent: #CA3D33;
+  --color-accent-hover: #a8322b;
+  --color-page-bg: #f5f5f5;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f6f6f6;
+  --color-surface-elevated: #ffffff;
+  --color-surface-hover: #fae9e9;
+  --color-text: #303030;
+  --color-text-muted: #707070;
+  --color-text-secondary: #555555;
+  --color-border: #d9d9d9;
+  --color-border-strong: #bcbcbc;
+  --shadow-sm: 0 1px 3px rgba(30, 30, 30, 0.08);
+  --shadow-md: 0 8px 24px rgba(30, 30, 30, 0.12);
+  --focus-ring: 0 0 0 3px rgba(202, 61, 51, 0.16);
 }
 
 body {
@@ -105,7 +123,6 @@ body {
   color: var(--text-main);
   background: #fff;
   border-color: var(--border-subtle);
-  box-shadow: var(--shadow-lg);
 }
 
 .card {
@@ -827,10 +844,6 @@ textarea:focus,
   border-top: 1px solid var(--color-border);
 }
 
-.form-card .case-create-grid {
-  padding-top: var(--space-4);
-}
-
 .worklist-tabs {
   display: flex;
   gap: 2px;
@@ -964,7 +977,7 @@ textarea:focus,
   }
 }
 
-/* Authoritative dark application theme */
+/* Authoritative VISTA application theme */
 :root {
   --bg-app: var(--color-background);
   --bg-card: var(--color-surface);
@@ -972,11 +985,11 @@ textarea:focus,
   --bg-inner: var(--color-surface-subtle);
   --primary: var(--color-primary);
   --primary-hover: var(--color-primary-hover);
-  --primary-dark: #438f89;
-  --primary-glow: rgba(95, 184, 176, .18);
+  --primary-dark: #842720;
+  --primary-glow: rgba(202, 61, 51, .16);
   --text-main: var(--color-text);
   --text-muted: var(--color-text-muted);
-  --text-dim: #7d8b92;
+  --text-dim: #858585;
   --border-subtle: var(--color-border);
   --border-interactive: var(--color-border-strong);
   --surface: var(--color-surface);
@@ -1060,10 +1073,13 @@ textarea::placeholder {
   background: var(--color-surface);
 }
 
-/* Dark application theme: keep worklists and workspace content readable. */
-.clinical-topbar strong,
+/* Preserve legible graphite chrome over the shared light VISTA surfaces. */
+.clinical-topbar strong {
+  color: #fff;
+}
+
 .clinical-topbar small {
-  color: var(--color-text);
+  color: #c5c5c5;
 }
 
 .dashboard-page__toolbar,
