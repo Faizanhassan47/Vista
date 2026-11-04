@@ -1,0 +1,23 @@
+/* Navigation styling is kept in global.css so legacy pages and the reusable sidebar share one visual system. */
+
+/* The shell owns the sidebar column; keep the sidebar in that grid flow so
+   page content starts beside it instead of being covered by it. */
+.clinical-sidebar {
+  position: static;
+  width: auto;
+  height: auto;
+  min-height: 100vh;
+}
+
+.clinical-brand img { width: var(--brand-logo-size, 32px); height: var(--brand-logo-size, 32px); object-fit: contain; }
+.clinical-brand strong { font-size: var(--brand-title-size, 14px); }
+.clinical-brand small { font-size: var(--brand-subtitle-size, 10px); }
+
+@media (max-width: 900px) {
+  .clinical-sidebar {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+  }
+}
