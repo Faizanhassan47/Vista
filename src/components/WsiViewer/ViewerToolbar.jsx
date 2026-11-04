@@ -211,9 +211,10 @@ export default function ViewerToolbar({
       <div className="toolbar-group" role="group" aria-label="Overlays and Layers">
     
         <div className="annotation-toolbar-menu" ref={annotationMenuRef}>
-          <button type="button" className={`btn-toolbar ${annotationMenuOpen || drawMode ? 'btn-toolbar--active' : ''}`} onClick={() => setAnnotationMenuOpen((open) => !open)} title="Annotation tools" aria-expanded={annotationMenuOpen} aria-haspopup="menu">
+          <button type="button" className={`btn-toolbar annotation-toolbar-menu__trigger ${annotationMenuOpen || drawMode ? 'btn-toolbar--active' : ''}`} onClick={() => setAnnotationMenuOpen((open) => !open)} title="Annotation tools" aria-expanded={annotationMenuOpen} aria-haspopup="menu">
             {annotationsVisible ? <Eye size={16} /> : <EyeOff size={16} />}
-            <span className="toolbar-btn-text">Annotations</span><ChevronDown size={13} />
+            <span className="toolbar-btn-text">Annotations</span>
+            <ChevronDown className="annotation-toolbar-menu__arrow" size={14} aria-hidden="true" />
           </button>
           {annotationMenuOpen && <div className="annotation-toolbar-menu__popup" role="menu" aria-label="Annotation tools">
             <button type="button" role="menuitemcheckbox" aria-checked={annotationsVisible} onClick={onToggleAnnotations}>{annotationsVisible ? <Eye size={15} /> : <EyeOff size={15} />}<span>Show annotations</span></button>

@@ -381,7 +381,6 @@ input:checked+.ai-switch::after {
 }
 
 input:focus-visible+.ai-switch {
-    box-shadow: var(--focus-ring);
 }
 
 input:disabled+.ai-switch {

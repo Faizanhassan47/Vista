@@ -32,7 +32,6 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 0 20px var(--primary-glow);
 }
 
 .title-row {
@@ -87,12 +86,10 @@
 
 .status-dot.online {
   background-color: #10b981;
-  box-shadow: 0 0 8px #10b981;
 }
 
 .status-dot.offline {
   background-color: #ef4444;
-  box-shadow: 0 0 8px #ef4444;
 }
 
 .status-dot.checking {
@@ -106,7 +103,6 @@
   border-radius: var(--radius-lg);
   padding: 24px;
 
-  box-shadow: var(--shadow-lg);
 }
 
 .form-card {
@@ -186,7 +182,6 @@ input,
 
 input:focus {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px var(--primary-glow);
 }
 
 input::placeholder {
@@ -249,14 +244,12 @@ input::placeholder {
   padding: 10px 20px;
   border-radius: var(--radius-md);
   font-size: 0.9rem;
-  box-shadow: 0 4px 14px var(--primary-glow);
   height: 42px;
   white-space: nowrap;
 }
 
 .btn-primary:hover:not(:disabled) {
   background: linear-gradient(135deg, var(--primary-hover) 0%, var(--primary) 100%);
-  box-shadow: 0 6px 20px rgba(6, 182, 212, 0.4);
   transform: translateY(-1px);
 }
 
@@ -283,7 +276,6 @@ input::placeholder {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  box-shadow: var(--shadow-lg);
   max-height: 680px;
 }
 
@@ -369,7 +361,6 @@ input::placeholder {
 .case.case-active {
   background: rgba(6, 182, 212, 0.12);
   border-color: var(--primary);
-  box-shadow: 0 0 16px rgba(6, 182, 212, 0.15);
 }
 
 .case-item-header {
@@ -429,7 +420,6 @@ input::placeholder {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  box-shadow: var(--shadow-lg);
   height: 680px;
 }
 
@@ -660,7 +650,6 @@ input::placeholder {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
 }
 
 .workspace-header-search__results a {
@@ -1223,7 +1212,7 @@ input::placeholder {
   --radius-lg: 10px;
   --radius-md: 7px;
   --radius-sm: 5px;
-  --shadow-lg: 0 1px 3px rgba(30, 30, 30, 0.08);
+  --shadow-lg: none;
 }
 
 body {
@@ -1283,7 +1272,6 @@ button {
 .sidebar-card,
 .viewer-card {
 
-  box-shadow: var(--shadow-lg);
 }
 
 .card {
@@ -1303,7 +1291,6 @@ input,
 }
 
 input:focus {
-  box-shadow: 0 0 0 2px rgba(95, 182, 174, 0.14);
 }
 
 .btn-primary {
@@ -1523,7 +1510,6 @@ textarea {
 .viewer-card {
   background: var(--color-surface);
   border-color: var(--color-border);
-  box-shadow: var(--shadow-sm);
 }
 
 .sidebar-card {
@@ -1554,7 +1540,6 @@ textarea {
 .case.case-active {
   background: var(--color-primary-light);
   border-color: #9db8cc;
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .viewer-card {
@@ -1749,7 +1734,6 @@ textarea {
 }
 
 .tray-active {
-  box-shadow: 0 0 14px rgba(6, 182, 212, 0.18);
 }
 
 .tray-select {
@@ -2327,7 +2311,6 @@ body {
   color: var(--color-text);
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sm);
 }
 
 .header-brand {
@@ -2393,7 +2376,6 @@ body {
   color: var(--color-text);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
-  box-shadow: var(--shadow-sm);
 }
 
 .columns {
@@ -2444,7 +2426,6 @@ body {
 
 .search-bar:focus-within {
   border-color: var(--color-primary);
-  box-shadow: var(--focus-ring);
 }
 
 .search-bar input {
@@ -2481,7 +2462,6 @@ body {
 .case.case-active {
   background: var(--color-primary-light);
   border-color: #4f8f8a;
-  box-shadow: inset 3px 0 0 var(--color-primary);
 }
 
 .case-id {
@@ -3017,7 +2997,6 @@ body {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
 }
 
 .workspace-metrics article>div {
@@ -3131,7 +3110,7 @@ body {
 .case-review-hero {
   background: var(--color-surface);
   border-bottom: 1px solid var(--color-border);
-  padding: 10px;
+  padding: 12px 30px 0;
 }
 
 .case-review-hero__crumbs {
@@ -3230,6 +3209,13 @@ body {
   font-weight: 600;
 }
 
+.layout--case-review {
+  --primary: #ca3d33;
+  --primary-hover: #a8322b;
+  --color-primary: #ca3d33;
+  --primary-glow: rgba(202, 61, 51, 0.16);
+}
+
 .case-review-tabs {
   display: flex;
   gap: 5px;
@@ -3258,8 +3244,8 @@ body {
 }
 
 .case-review-tab--active {
-  color: #0969da;
-  border-bottom-color: #0969da;
+  color: #ca3d33;
+  border-bottom-color: #ca3d33;
   font-weight: 700;
 }
 

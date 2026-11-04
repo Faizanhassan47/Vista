@@ -154,7 +154,6 @@
 .report-panel select:focus {
     border-color: var(--color-primary);
     outline: none;
-    box-shadow: var(--focus-ring);
 }
 
 .report-findings {
@@ -208,7 +207,6 @@
     color: #1d2933;
     background: #fff;
     border: 1px solid var(--color-border);
-    box-shadow: var(--shadow-md);
 }
 
 /* Reports remain document-like white paper inside the dark application shell. */

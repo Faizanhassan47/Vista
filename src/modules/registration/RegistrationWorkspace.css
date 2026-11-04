@@ -18,7 +18,6 @@
   background: var(--color-background);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-lg);
   overflow: hidden;
 }
 
@@ -367,7 +366,7 @@
 }
 
 .landmark-marker {
-  filter: drop-shadow(0 0 3px rgba(0, 0, 0, 0.6));
+  filter: none;
 }
 
 /* History Modal */
@@ -387,7 +386,6 @@
   background: var(--color-surface);
   border: var(--border-width) solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
   display: flex;
   flex-direction: column;
 }

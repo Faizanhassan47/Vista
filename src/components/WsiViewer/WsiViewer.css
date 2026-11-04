@@ -49,7 +49,7 @@
 }
 
 .annotation-shape--selected {
-  filter: drop-shadow(0 0 5px #3b82f6);
+  filter: none;
 }
 
 .annotation-item--selected {
@@ -91,7 +91,6 @@
   background: var(--color-surface);
   border: var(--border-width) solid var(--color-primary);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
   pointer-events: none;
 }
 
@@ -144,7 +143,6 @@
   background: var(--color-surface-elevated);
   border: var(--border-width) solid var(--color-primary);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
   pointer-events: none;
 }
 
@@ -1297,7 +1295,6 @@
 .annotation-shape--selected polygon {
   stroke-width: 3.5px !important;
   stroke-dasharray: 4 2;
-  filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.6));
 }
 
 .annotation-item--selected {
@@ -1333,8 +1330,8 @@
 }
 
 .findings-tab--active {
-  color: #67b7ff;
-  border-bottom-color: #67b7ff;
+  color: #ca3d33;
+  border-bottom-color: #ca3d33;
   font-weight: 700;
 }
 

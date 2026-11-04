@@ -782,8 +782,10 @@ export default function App() {
                 </div>
               </div>}
             </>}
-          </>}
+          </>
+            )}
         </section>
+      </section>
       )}
       <Modal open={Boolean(deleteSlideTarget)} title="Remove slide" onClose={() => !busy && setDeleteSlideTarget(null)} footer={<><button type="button" onClick={() => setDeleteSlideTarget(null)}>Cancel</button><button type="button" className="btn-delete" disabled={busy} onClick={removeSlide}>Remove slide</button></>}><p>Remove <strong>{deleteSlideTarget?.label}</strong> and its analysis records?</p></Modal>
       <Modal open={Boolean(deleteCaseTarget)} title="Remove case" onClose={() => !busy && setDeleteCaseTarget(null)} footer={<><button type="button" onClick={() => setDeleteCaseTarget(null)}>Cancel</button><button type="button" className="btn-delete" disabled={busy} onClick={removeCase}>Remove case</button></>}><p>Remove case <strong>{deleteCaseTarget?.case_id}</strong> and its related records?</p></Modal>

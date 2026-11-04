@@ -4,6 +4,12 @@
   padding: 0;
 }
 
+*,
+*::before,
+*::after {
+  box-shadow: none !important;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -281,7 +287,6 @@ html[data-theme='dark'] .library-shell__title a {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
 }
 
 .clinical-topbar__results a,

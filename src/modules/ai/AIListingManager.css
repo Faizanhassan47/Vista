@@ -202,7 +202,6 @@ html[data-theme='dark'] .ai-listing-form select {
 .ai-listing-form textarea:focus {
     border-color: var(--color-primary);
     outline: 0;
-    box-shadow: var(--focus-ring);
 }
 
 .ai-listing-form__capability {

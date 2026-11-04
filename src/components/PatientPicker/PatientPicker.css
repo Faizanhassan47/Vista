@@ -47,7 +47,6 @@
 
 .patient-picker__search:focus-within {
     border-color: var(--color-primary);
-    box-shadow: var(--focus-ring);
 }
 
 .patient-picker__selected span {

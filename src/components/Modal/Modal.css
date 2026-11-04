@@ -19,7 +19,6 @@
   background: var(--bg-inner);
   border: var(--border-width) solid var(--border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.45);
   outline: none;
   animation: modal-enter 160ms ease-out;
 }
