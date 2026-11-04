@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, LogOut, UserRound } from 'lucide-react';
+import { ChevronDown, LogOut, Moon, Sun, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../modules/auth/AuthProvider';
 import { caseService } from '../../services/caseService';
@@ -12,7 +12,13 @@ export default function TopBar() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ cases: [], patients: [] });
   const [profileOpen, setProfileOpen] = useState(false);
+  const [theme, setTheme] = useState(() => localStorage.getItem('vista-theme') || 'light');
   const displayName = user?.display_name || user?.username || 'User';
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('vista-theme', theme);
+  }, [theme]);
 
   useEffect(() => {
     const term = query.trim();
@@ -51,7 +57,12 @@ export default function TopBar() {
       <button type="button" className="top-bar__profile" aria-expanded={profileOpen} aria-haspopup="menu" aria-controls="top-bar-profile-menu" onClick={() => setProfileOpen((open) => !open)}>
         <span className="top-bar__avatar"><UserRound size={16} aria-hidden="true" /></span><span className="top-bar__identity"><strong>{displayName}</strong><small>{user?.role || 'User'}</small></span><ChevronDown className="top-bar__chevron" size={14} />
       </button>
-      {profileOpen && <div className="top-bar__profile-menu" id="top-bar-profile-menu" role="menu"><button type="button" role="menuitem" onClick={logout}><LogOut size={15} aria-hidden="true" /> Log out</button></div>}
+      {profileOpen && <div className="top-bar__profile-menu" id="top-bar-profile-menu" role="menu">
+        <button type="button" role="menuitem" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+          {theme === 'dark' ? <><Sun size={15} aria-hidden="true" /> Light mode</> : <><Moon size={15} aria-hidden="true" /> Dark mode</>}
+        </button>
+        <button type="button" role="menuitem" onClick={logout}><LogOut size={15} aria-hidden="true" /> Log out</button>
+      </div>}
     </div>
   </header>;
 }

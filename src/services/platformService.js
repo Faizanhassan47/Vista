@@ -79,7 +79,7 @@ export const platformService = {
     body: JSON.stringify(prefs),
   }),
   deleteSlide: (slideId) => request(`/slides/${slideId}`, { method: 'DELETE' }),
-  deleteCase: (caseId) => request(`/cases/${caseId}`, { method: 'DELETE' }),
+  deleteCase: (caseId, { confirmFinalized = false } = {}) => request(`/cases/${caseId}${confirmFinalized ? '?confirm_finalized=true' : ''}`, { method: 'DELETE' }),
   hl7Samples: (signal) => request('/hl7/sandbox/samples', { signal }),
   validateHl7: (rawPayload) => request('/hl7/sandbox/validate', {
     method: 'POST',

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Activity, RefreshCw, ShieldCheck, MapPin } from 'lucide-react';
+import { MapPin } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { getAuditEvents } from '../../services/auditService';
 import {
@@ -12,14 +12,24 @@ import {
 import Modal from '../Modal/Modal';
 import Field from '../Field/Field';
 import FilterBar from '../FilterBar/FilterBar';
+import ReferenceTable from '../ReferenceTable/ReferenceTable';
+import Pagination from '../Pagination/Pagination';
 import { auditCategories, describeAuditEvent } from './activityLog';
 import './AdministrationLogs.css';
+import '../../modules/cases/CaseLibrary.css';
 
 export default function AdministrationLogs() {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
+  const [actor, setActor] = useState('');
   const [category, setCategory] = useState('All');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [location, setLocation] = useState('');
+  const [ipAddress, setIpAddress] = useState('');
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
 
   const [deviceLoc, setDeviceLoc] = useState(() => getDeviceLocation());
   const [devName, setDevName] = useState(() => getDeviceName());
@@ -49,11 +59,6 @@ export default function AdministrationLogs() {
     return () => window.removeEventListener('prs:device-info-changed', handleDeviceChange);
   }, []);
 
-  const refresh = () => {
-    setLoading(true);
-    load();
-  };
-
   const handleSaveDeviceConfig = (event) => {
     event.preventDefault();
     setDeviceLocation(customLocation);
@@ -79,100 +84,47 @@ export default function AdministrationLogs() {
   }, [events]);
   const visibleEvents = useMemo(() => events.filter((event) => {
     const description = describeAuditEvent(event);
-    const matchesCategory = category === 'All' || description.category === category;
-    const searchable = `${event.actor_username} ${description.title} ${description.explanation} ${event.target_id} ${event.ip_address || ''} ${event.device_location || ''} ${event.device_name || ''}`.toLowerCase();
-    return matchesCategory && searchable.includes(query.trim().toLowerCase());
-  }), [category, events, query]);
+    const matches = (value, term) => !term.trim() || String(value || '').toLowerCase().includes(term.trim().toLowerCase());
+    const createdAt = event.created_at ? new Date(event.created_at) : null;
+    const createdTime = createdAt && !Number.isNaN(createdAt.getTime()) ? createdAt.getTime() : null;
+    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
+    const toExclusive = dateTo ? new Date(`${dateTo}T00:00:00`).getTime() + 86400000 : null;
+    const searchable = `${description.title} ${description.explanation} ${event.target_id || ''} ${event.ip_address || ''} ${event.device_location || ''}`;
+    return (category === 'All' || description.category === category)
+      && matches(event.actor_username, actor)
+      && matches(searchable, query)
+      && matches(event.device_location, location)
+      && matches(event.ip_address, ipAddress)
+      && (!dateFrom || (createdTime !== null && createdTime >= fromTime))
+      && (!dateTo || (createdTime !== null && createdTime < toExclusive));
+  }), [actor, category, dateFrom, dateTo, events, ipAddress, location, query]);
+  const pageEvents = visibleEvents.slice(page * pageSize, page * pageSize + pageSize);
 
-  return <section className="activity-log" aria-labelledby="activity-log-title">
-    <div className="activity-log-intro">
-      <div>
-        <p className="page-eyebrow">System history</p>
-        <h2 id="activity-log-title">Application activity</h2>
-        <p>See who did what, when it happened, and which record was affected.</p>
-      </div>
-      <button type="button" className="btn-control-secondary activity-refresh" onClick={refresh} disabled={loading}>
-        <RefreshCw size={15} /> {loading ? 'Loading…' : 'Refresh'}
-      </button>
-    </div>
-    <div className="activity-summary" aria-label="Activity summary">
-      <article>
-        <Activity size={18} />
-        <div>
-          <span>Events shown</span>
-          <strong>{visibleEvents.length}</strong>
-        </div>
-      </article>
-      <article>
-        <ShieldCheck size={18} />
-        <div>
-          <span>Audit protection</span>
-          <strong>Enabled</strong>
-        </div>
-      </article>
-      <article className="activity-summary-device">
-        <MapPin size={18} />
-        <div className="activity-summary-device-info">
-          <span>This workstation</span>
-          <strong title={deviceLoc}>{deviceLoc}</strong>
-          <small>{devName}</small>
-        </div>
-        <button
-          type="button"
-          className="btn-control-secondary btn-station-configure"
-          onClick={() => {
-            setCustomLocation(getDeviceLocation());
-            setCustomName(getDeviceName());
-            setShowConfigModal(true);
-          }}
-        >
-          Configure
-        </button>
-      </article>
-    </div>
-    <FilterBar layout="toolbar" fields={[
-      { label: 'Search activity', type: 'text', value: query, onChange: setQuery, placeholder: 'Search people, actions, IP or records', suggestions: searchSuggestions },
-      { label: 'Activity type', type: 'select', value: category, onChange: setCategory, options: [{ value: 'All', label: 'All' }, ...categories.map((item) => ({ value: item, label: item }))] },
+  return <section className="activity-log case-library" aria-labelledby="activity-log-title">
+    <div className="case-library__create-row"><button type="button" className="case-library__create-reference" onClick={() => { setCustomLocation(getDeviceLocation()); setCustomName(getDeviceName()); setShowConfigModal(true); }}>+ Configure Workstation</button></div>
+    <FilterBar title="Select Activity" layout="case-reference" fields={[
+      { label: 'User', value: actor, onChange: setActor, suggestions: searchSuggestions },
+      { label: 'Activity', value: query, onChange: setQuery, suggestions: searchSuggestions },
+      { label: 'Location', value: location, onChange: setLocation, suggestions: searchSuggestions },
+      { label: 'Device IP', value: ipAddress, onChange: setIpAddress, suggestions: searchSuggestions },
+      { label: 'Dated', type: 'dateRange', from: dateFrom, to: dateTo, onFromChange: setDateFrom, onToChange: setDateTo },
+      { label: 'Area', type: 'select', value: category, onChange: setCategory, options: [{ value: 'All', label: '--- Select ---' }, ...categories.map((item) => ({ value: item, label: item }))] },
     ]} />
-    <div className="activity-table-wrap">
-      <table className="activity-table">
-        <thead>
-          <tr>
-            <th>When</th>
-            <th>Who</th>
-            <th>What happened</th>
-            <th>Area</th>
-            <th>Device IP</th>
-            <th>Device location</th>
-            <th>Result</th>
-          </tr>
-        </thead>
-        <tbody>
-          {visibleEvents.map((event) => {
-            const description = describeAuditEvent(event);
-            return <tr key={event.id}>
-              <td><time dateTime={event.created_at}>{event.created_at ? new Date(event.created_at).toLocaleString() : 'Time unavailable'}</time></td>
-              <td><strong>{event.actor_username || 'System'}</strong></td>
-              <td><strong>{description.title}</strong><span>{description.explanation}</span></td>
-              <td><span className="activity-category">{description.category}</span></td>
-              <td><span className="activity-ip">{event.ip_address || '—'}</span></td>
-              <td>
-                <div className="activity-location-cell">
-                  <span className="activity-location">{event.device_location || '—'}</span>
-                  {event.device_name && event.device_name !== 'Workstation' && (
-                    <small className="activity-device-subtext">{event.device_name}</small>
-                  )}
-                </div>
-              </td>
-              <td><span className="activity-outcome">{description.outcome}</span></td>
-            </tr>;
-          })}
-          {!loading && visibleEvents.length === 0 && <tr><td colSpan="7" className="activity-empty">No activity matches these filters.</td></tr>}
-          {loading && <tr><td colSpan="7" className="activity-empty">Loading application activity…</td></tr>}
-        </tbody>
-      </table>
+    <div className="case-library__layout case-library__layout--worklist">
+      <section>
+        <ReferenceTable loading={loading} rows={pageEvents} rowKey={(event) => event.id} showOpen={false} empty="No activity found." columns={[
+          { key: 'sr', label: 'Sr. #', render: (_, index) => page * pageSize + index + 1 },
+          { key: 'when', label: 'When', render: (event) => event.created_at ? new Date(event.created_at).toLocaleString() : 'Not recorded' },
+          { key: 'user', label: 'User', render: (event) => event.actor_username || 'System' },
+          { key: 'activity', label: 'Activity', render: (event) => describeAuditEvent(event).title },
+          { key: 'area', label: 'Area', render: (event) => describeAuditEvent(event).category },
+          { key: 'ip', label: 'Device IP', render: (event) => event.ip_address || 'Not recorded' },
+          { key: 'location', label: 'Location', render: (event) => event.device_location || devName || 'Not recorded' },
+          { key: 'result', label: 'Result', render: (event) => describeAuditEvent(event).outcome },
+        ]} />
+        <Pagination page={page} pageSize={pageSize} total={visibleEvents.length} onPageChange={setPage} label="Activity log pages" />
+      </section>
     </div>
-    <p className="activity-help">This page shows recorded security and record-changing actions, including device IP and location. It does not display passwords, access tokens, or patient image contents.</p>
 
     <Modal
       open={showConfigModal}

@@ -1,0 +1,102 @@
+.reference-table-wrap {
+  overflow: visible;
+  background: #fff;
+}
+
+.reference-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  color: #303030;
+  table-layout: fixed;
+}
+
+.reference-table th {
+  padding: 10px 14px;
+  color: #707070;
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-align: left;
+  text-transform: none;
+  background: #fff;
+  border-bottom: 1px solid #aaa;
+}
+
+.reference-table td {
+  padding: 11px 14px;
+  color: #303030;
+  font-size: 14px;
+  line-height: 1.2;
+  vertical-align: middle;
+  background: #fff;
+  border-bottom: 1px solid #e6e6e6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reference-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.reference-table tbody tr {
+  cursor: pointer;
+}
+
+.reference-table tbody tr:hover td {
+  background: #fae9e9;
+}
+
+.reference-table__fit {
+  overflow: visible;
+  white-space: normal;
+}
+
+.reference-table__open {
+  width: 36px;
+  padding-right: 8px;
+  color: #303030;
+  text-align: right;
+}
+
+.reference-table__empty-row {
+  cursor: default;
+}
+
+.reference-table__empty-row:hover td,
+.reference-table__empty-row td {
+  background: #fff;
+  white-space: normal;
+  text-align: center;
+  color: #707070;
+}
+
+.reference-table__skeleton {
+  height: 18px;
+  background: #f3f3f3;
+}
+
+html[data-theme='dark'] .reference-table-wrap,
+html[data-theme='dark'] .reference-table,
+html[data-theme='dark'] .reference-table th,
+html[data-theme='dark'] .reference-table td,
+html[data-theme='dark'] .reference-table__empty-row td,
+html[data-theme='dark'] .reference-table__empty-row:hover td {
+  color: #f2f2f2;
+  background: #1c1c1c;
+  border-color: #333;
+}
+
+html[data-theme='dark'] .reference-table th,
+html[data-theme='dark'] .reference-table__empty-row td {
+  color: #b5b5b5;
+}
+
+html[data-theme='dark'] .reference-table tbody tr:hover td {
+  background: #3a2424;
+}
+
+html[data-theme='dark'] .reference-table__skeleton {
+  background: #2a2a2a;
+}

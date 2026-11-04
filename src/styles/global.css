@@ -107,13 +107,8 @@ button {
   flex: 1;
   display: flex;
   justify-content: center;
-  padding: 32px;
 }
 
-.admin-page-inner {
-  width: 100%;
-  max-width: 1680px;
-}
 
 .route-link,
 .admin-route-link {
@@ -159,6 +154,22 @@ button {
   background: #fff;
 }
 
+html[data-theme='dark'] .library-shell,
+html[data-theme='dark'] .library-shell__title,
+html[data-theme='dark'] .clinical-shell {
+  color: #f2f2f2;
+  background: #121212;
+}
+
+html[data-theme='dark'] .library-shell__title {
+  border-bottom: 1px solid #2a2a2a;
+}
+
+html[data-theme='dark'] .library-shell__title strong,
+html[data-theme='dark'] .library-shell__title a {
+  color: #d0d0d0;
+}
+
 .library-shell__title strong,
 .library-shell__title a {
   color: #707070;
@@ -177,7 +188,6 @@ button {
 .clinical-shell {
   min-height: 100vh;
   display: block;
-  background: white;
 }
 
 .clinical-shell__content {

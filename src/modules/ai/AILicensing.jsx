@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Building2, CreditCard, KeyRound, Users } from 'lucide-react';
 import { aiSubscriptionService } from '../../services/aiSubscriptionService';
+import ReferenceTable from '../../components/ReferenceTable/ReferenceTable';
 import './AILicensing.css';
 
 export default function AILicensing() {
@@ -42,7 +43,7 @@ export default function AILicensing() {
 
   return <section className="ai-license-panel" aria-labelledby="ai-license-title">
     <header className="ai-license-header">
-      <div><p className="page-eyebrow">AI licensing</p><h2 id="ai-license-title">Laboratory subscriptions</h2><p>Monitor independently licensed features and allocated user seats.</p></div>
+      <p id="ai-license-title">Monitor licensed features and allocated user seats.</p>
       <label>Laboratory<select value={selectedLaboratory} onChange={(event) => setSelectedLaboratory(event.target.value)}><option value="">Select laboratory</option>{laboratories.map((lab) => <option key={lab.id} value={lab.id}>{lab.laboratory_name}</option>)}</select></label>
     </header>
     {state.error && <div className="ai-license-error" role="alert">{state.error}</div>}
@@ -52,10 +53,15 @@ export default function AILicensing() {
       <article><Users /><span>Assigned seats</span><strong>{totals.assigned}</strong></article>
       <article><CreditCard /><span>Available seats</span><strong>{totals.available}</strong></article>
     </div>
-    <div className="ai-license-table-wrap"><table className="ai-license-table"><thead><tr><th>AI feature</th><th>Plan</th><th>Purchased</th><th>Assigned</th><th>Available</th><th>Expiry</th><th>Status</th></tr></thead><tbody>
-      {subscriptions.map((item) => <tr key={item.id}><td>{item.feature_name}</td><td>{item.plan_name || 'Complimentary grant'}</td><td>{item.seat_quantity}</td><td>{item.assigned_seats}</td><td>{item.available_seats}</td><td>{new Date(item.end_date).toLocaleDateString()}</td><td><span className={`ai-license-status ai-license-status--${item.status.toLowerCase()}`}>{item.status}</span></td></tr>)}
-      {!subscriptions.length && <tr><td colSpan="7" className="ai-license-empty">No laboratory AI subscriptions are configured.</td></tr>}
-    </tbody></table></div>
+    <ReferenceTable showOpen={false} rows={subscriptions} rowKey={(item) => item.id} empty="No laboratory AI subscriptions are configured." columns={[
+      { key: 'feature', label: 'AI feature', render: (item) => item.feature_name },
+      { key: 'plan', label: 'Plan', render: (item) => item.plan_name || 'Complimentary grant' },
+      { key: 'purchased', label: 'Purchased', render: (item) => item.seat_quantity },
+      { key: 'assigned', label: 'Assigned', render: (item) => item.assigned_seats },
+      { key: 'available', label: 'Available', render: (item) => item.available_seats },
+      { key: 'expiry', label: 'Expiry', render: (item) => new Date(item.end_date).toLocaleDateString() },
+      { key: 'status', label: 'Status', render: (item) => item.status },
+    ]} />
     {!plans.length && <p className="ai-license-notice">No purchasable plans are configured. A Super Administrator must define pricing before checkout can be enabled.</p>}
   </section>;
 }

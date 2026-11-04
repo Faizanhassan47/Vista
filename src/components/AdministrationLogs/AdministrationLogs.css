@@ -1,5 +1,25 @@
-.activity-log {
-  color: var(--color-text);
+.activity-log.case-library {
+  padding: 0 30px 24px;
+  color: #303030;
+  background: #fff;
+}
+
+.activity-log .case-library__create-row {
+  padding: 14px 0 12px;
+}
+
+.activity-log .case-library__data-table--reference {
+  table-layout: auto;
+}
+
+.activity-log .case-library__data-table--reference th,
+.activity-log .case-library__data-table--reference td {
+  white-space: nowrap;
+}
+
+.activity-log .case-library__create-reference {
+  border: 0;
+  cursor: pointer;
 }
 
 .activity-log-intro {

@@ -1,7 +1,29 @@
-.patient-directory {
-    min-height: 100vh;
-    padding: var(--spacing-xl);
-    color: var(--color-text);
+.patient-directory.case-library {
+    min-height: 0;
+    padding: 0 30px 24px;
+    color: #303030;
+    background: #fff;
+}
+
+html[data-theme='dark'] .patient-directory.case-library {
+    color: #f2f2f2;
+    background: #121212;
+}
+
+html[data-theme='dark'] .patient-directory th,
+html[data-theme='dark'] .patient-directory td {
+    color: #f2f2f2;
+    background: #1c1c1c;
+    border-color: #333;
+}
+
+.patient-directory .case-library__create-row {
+    padding: 14px 0 12px;
+}
+
+.patient-directory .case-library__create-reference {
+    border: 0;
+    cursor: pointer;
 }
 
 .patient-directory__header {
@@ -31,8 +53,8 @@
 
 .patient-directory__body {
     width: 100%;
-    max-width: 1400px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
 }
 
 .patient-directory__card {

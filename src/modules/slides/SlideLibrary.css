@@ -6,7 +6,8 @@
 }
 
 /* Match the dark case-library worklist visual language. */
-.slide-library { max-width: none; padding: 8px 4px 24px; color: #dce8f5; background: #0d1722; }
+.slide-library { max-width: none; padding: 0 30px 24px; color: inherit; background: transparent; }
+.slide-library.case-library { padding: 20px; color: inherit; background: transparent; }
 .slide-library__filters { margin-bottom: 18px; padding: 9px 10px; background: #142231; border-color: #2a4055; border-radius: 5px; }.slide-library__search, .slide-library__filter, .slide-library__view-toggle { border-color: #2a4055; background: #142231; }.slide-library__search input, .slide-library__filter select { color: #dce8f5; }.slide-library__count { color: #dce8f5; }.slide-library__cards-layout { grid-template-columns: minmax(0, 1fr) 350px; gap: 16px; }.slide-library__grid { gap: 8px; }.slide-card { color: #dce8f5; background: #172736; border-color: #23517e; }.slide-card:hover, .slide-card.is-selected { background: #1a3045; border-color: #1f75c2; }.slide-library__details { color: #dce8f5; background: #172736; border-color: #2a4055; }.slide-library__details h2 { color: #fff; }.slide-library__details h3 { color: #185484; border-color: #23517e; }.slide-library__details .btn-primary { color: #fff; background: #1d4d7c; border-color: #1d4d7c; }
 
 .slide-library__saved-views {

@@ -268,6 +268,11 @@ export default function App() {
 
   const openSideBySideComparison = () => {
     if (!selectedSlide || !selectedCase) return;
+    if (splitView) {
+      setSplitView(false);
+      setCompareSlideIds([]);
+      return;
+    }
     if (compareSlideIds.length) {
       setSplitView(true);
       return;
@@ -795,13 +800,15 @@ export default function App() {
                   <button type="button" className="tray-select" onClick={() => selectSlide(slide)}>
                     <img src={slide.thumbnail_url} alt={`${slide.label} thumbnail`} loading="lazy" />
                     <span className="tray-copy"><strong>{slide.label}</strong><small>{slide.stain || 'Unspecified stain'}</small>
-                      <span><b>{slide.file_type === 'wsi' ? 'WSI' : slide.format}</b><i className={`upload-state ${slide.upload_state}`}>{slide.upload_state}</i>
+                      <span><b>{slide.file_type === 'wsi' || slide.file_type === 'dicom-wsi' ? 'WSI' : slide.format}</b><i className={`upload-state ${slide.upload_state}`}>{slide.upload_state}</i>
                         {slide.qc_status && <span className={`qc-badge qc-${slide.qc_status.replace(/\s+/g, '-').toLowerCase()}`}>{slide.qc_status}</span>}
                       </span></span>
                   </button>
-                  <button type="button" className="tray-compare" disabled={slide.id === selectedSlideId || (openScreenCount >= MAX_VIEWER_SCREENS && !compareSlideIds.includes(slide.id))} aria-label={compareSlideIds.includes(slide.id) ? `Remove ${slide.label} from multi-screen view` : `Add ${slide.label} to multi-screen view`} aria-pressed={compareSlideIds.includes(slide.id)} title={slide.id === selectedSlideId ? 'Primary screen' : openScreenCount >= MAX_VIEWER_SCREENS && !compareSlideIds.includes(slide.id) ? 'Maximum 4 screens reached' : compareSlideIds.includes(slide.id) ? 'Remove screen' : 'Add screen'} onClick={() => toggleScreenSlide(slide)}><Columns size={14} /></button>
-                  <button type="button" className="tray-edit" aria-label={`Edit ${slide.label}`} title="Edit slide details" onClick={() => setEditingSlideId(slide.id)}><Edit3 size={14} /></button>
-                  {canRemoveSlides && <button type="button" className="tray-delete" aria-label={`Remove ${slide.label}`} title="Remove slide" onClick={() => setDeleteSlideTarget(slide)}><Trash2 size={14} /></button>}
+                  <div className="tray-actions">
+                    <button type="button" className="tray-edit" aria-label={`Edit ${slide.label}`} title="Edit slide details" onClick={() => setEditingSlideId(slide.id)}><Edit3 size={14} /></button>
+                    {canRemoveSlides && <button type="button" className="tray-delete" aria-label={`Remove ${slide.label}`} title="Remove slide" onClick={() => setDeleteSlideTarget(slide)}><Trash2 size={14} /></button>}
+                    <button type="button" className="tray-compare" disabled={slide.id === selectedSlideId || (openScreenCount >= MAX_VIEWER_SCREENS && !compareSlideIds.includes(slide.id))} aria-label={compareSlideIds.includes(slide.id) ? `Remove ${slide.label} from multi-screen view` : `Add ${slide.label} to multi-screen view`} aria-pressed={compareSlideIds.includes(slide.id)} title={slide.id === selectedSlideId ? 'Primary screen' : openScreenCount >= MAX_VIEWER_SCREENS && !compareSlideIds.includes(slide.id) ? 'Maximum 4 screens reached' : compareSlideIds.includes(slide.id) ? 'Remove screen' : 'Add screen'} onClick={() => toggleScreenSlide(slide)}><Columns size={14} /></button>
+                  </div>
                 </div>)}
               </div>
               {slideUploadForm}

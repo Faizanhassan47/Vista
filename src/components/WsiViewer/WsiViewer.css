@@ -1021,6 +1021,7 @@
 }
 
 .viewer-canvas-container {
+  position: relative;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--color-border);
@@ -1117,19 +1118,14 @@
 
 .compare-panel .wsi-annotation-workspace {
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: minmax(300px, 1fr) minmax(180px, 34%);
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
-  gap: var(--spacing-sm);
+  gap: 0;
 }
 
 .compare-panel .annotation-panel {
-  display: flex;
-  grid-column: 1;
-  grid-row: 2;
-  min-height: 0;
-  max-height: none;
-  overflow-y: auto;
+  display: none;
 }
 
 .compare-panel .viewer-canvas-container {
@@ -1495,4 +1491,48 @@
   margin: 0;
   font-size: .72rem;
   line-height: 1.5;
+}
+
+.wsi-annotation-workspace.is-fullscreen,
+.wsi-annotation-workspace:fullscreen {
+  background: #090d0f;
+  color: #e8e8e8;
+}
+
+.wsi-annotation-workspace.is-fullscreen .advanced-viewer-toolbar,
+.wsi-annotation-workspace:fullscreen .advanced-viewer-toolbar,
+.wsi-annotation-workspace.is-fullscreen .annotation-panel,
+.wsi-annotation-workspace:fullscreen .annotation-panel,
+.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading,
+.wsi-annotation-workspace:fullscreen .annotation-panel-heading,
+.wsi-annotation-workspace.is-fullscreen .findings-tabs,
+.wsi-annotation-workspace:fullscreen .findings-tabs,
+.wsi-annotation-workspace.is-fullscreen .selected-findings,
+.wsi-annotation-workspace:fullscreen .selected-findings {
+  color: #e8e8e8;
+  background: #141414;
+  border-color: #2a2a2a;
+}
+
+.wsi-annotation-workspace.is-fullscreen .btn-toolbar,
+.wsi-annotation-workspace:fullscreen .btn-toolbar,
+.wsi-annotation-workspace.is-fullscreen .findings-tab,
+.wsi-annotation-workspace:fullscreen .findings-tab {
+  color: #d0d0d0;
+}
+
+.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading h3,
+.wsi-annotation-workspace:fullscreen .annotation-panel-heading h3,
+.wsi-annotation-workspace.is-fullscreen .selected-findings strong,
+.wsi-annotation-workspace:fullscreen .selected-findings strong,
+.wsi-annotation-workspace.is-fullscreen .selected-findings p,
+.wsi-annotation-workspace:fullscreen .selected-findings p {
+  color: #f2f2f2;
+}
+
+.wsi-annotation-workspace.is-fullscreen .annotation-empty,
+.wsi-annotation-workspace:fullscreen .annotation-empty,
+.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading span,
+.wsi-annotation-workspace:fullscreen .annotation-panel-heading span {
+  color: #9a9a9a;
 }

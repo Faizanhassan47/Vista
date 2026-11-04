@@ -11,6 +11,7 @@ const Workspace = lazy(() => import('../modules/workspace/PathologyWorkspace'));
 const Dashboard = lazy(() => import('../modules/dashboard/Dashboard'));
 const SlideLibrary = lazy(() => import('../modules/slides/SlideLibrary'));
 const CaseLibrary = lazy(() => import('../modules/cases/CaseLibrary'));
+const CaseRecordPage = lazy(() => import('../modules/cases/CaseRecordPage'));
 const AdminPanel = lazy(() => import('../components/AdminPanel/AdminPanel'));
 const AdministrationLogs = lazy(() => import('../components/AdministrationLogs/AdministrationLogs'));
 const PlatformOperations = lazy(() => import('../modules/platform/PlatformOperations'));
@@ -32,10 +33,10 @@ function ProtectedRoute({ adminOnly = false, superAdminOnly = false, operationsA
   if (pathologistExcluded && user.role === 'Pathologist') return <Navigate to="/" replace />;
   return children;
 }
-function AdminContent({ children }) { return <ClinicalShell><main id="main-content" className="admin-page-content"><div className="admin-page-inner">{children}</div></main></ClinicalShell>; }
+function AdminContent({ children, flush = false }) { return <ClinicalShell><main id="main-content" className={flush ? 'admin-page-content admin-page-content--flush' : 'admin-page-content'}><div className={flush ? 'admin-page-inner admin-page-inner--flush' : 'admin-page-inner'}>{children}</div></main></ClinicalShell>; }
 function AdminPage() { return <AdminContent><AdminPanel API={API_BASE_URL} /></AdminContent>; }
-function AdminLogsPage() { return <AdminContent><AdministrationLogs /></AdminContent>; }
-function AILicensingPage() { return <AdminContent><AILicensing /></AdminContent>; }
+function AdminLogsPage() { return <AdminContent flush><AdministrationLogs /></AdminContent>; }
+function AILicensingPage() { return <AdminContent flush><AILicensing /></AdminContent>; }
 function ManageAIFeaturesPage() { return <AdminContent><ManageAIFeatures /></AdminContent>; }
 function SystemSettingsPage() { return <AdminContent><SystemSettings /></AdminContent>; }
 function LibraryShell({ title, children }) { return <ClinicalShell pageTitle={title}>{children}</ClinicalShell>; }
@@ -48,6 +49,7 @@ export default function AppRouter() {
     <Route path="/dashboard" element={<Navigate to="/" replace />} />
     <Route path="/slides" element={<ProtectedRoute><LibraryShell title="Slide Library"><ErrorBoundary title="The slide library could not be displayed"><SlideLibrary /></ErrorBoundary></LibraryShell></ProtectedRoute>} />
     <Route path="/case-library" element={<ProtectedRoute><LibraryShell title="Case Library"><ErrorBoundary title="The case library could not be displayed"><CaseLibrary /></ErrorBoundary></LibraryShell></ProtectedRoute>} />
+    <Route path="/case-library/:caseId" element={<ProtectedRoute><ClinicalShell pageTitle="Case Library" backTo="/case-library"><ErrorBoundary title="The case record could not be displayed"><CaseRecordPage /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
     <Route path="/cases" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="The workspace could not be displayed"><Workspace /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
     <Route path="/create-case" element={<ProtectedRoute><ClinicalShell><ErrorBoundary title="The create-case page could not be displayed"><Workspace /></ErrorBoundary></ClinicalShell></ProtectedRoute>} />
     <Route path="/admin" element={<ProtectedRoute adminOnly><ErrorBoundary title="The admin panel could not be displayed"><AdminPage /></ErrorBoundary></ProtectedRoute>} />

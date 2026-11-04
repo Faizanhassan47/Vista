@@ -4,7 +4,7 @@ import { X } from 'lucide-react';
 import './Modal.css';
 import Button from '../Button/Button';
 
-export default function Modal({ open, title, children, onClose, footer, initialFocusRef }) {
+export default function Modal({ open, title, children, onClose, footer, initialFocusRef, className = '' }) {
   const dialogRef = useRef(null);
   const titleId = useId();
 
@@ -55,7 +55,7 @@ export default function Modal({ open, title, children, onClose, footer, initialF
     }}>
       <section
         ref={dialogRef}
-        className="global-modal"
+        className={`global-modal${className ? ` ${className}` : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}

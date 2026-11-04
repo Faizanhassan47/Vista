@@ -17,6 +17,7 @@ import {
   Activity, AlertTriangle, ChevronDown, Download,
   Loader2, Play, RefreshCw, StopCircle, X, Zap
 } from 'lucide-react';
+import Modal from '../Modal/Modal';
 import { viewerService } from '../../services/viewerService';
 import { API_BASE_URL } from '../../config';
 import { aiSubscriptionService } from '../../services/aiSubscriptionService';
@@ -238,6 +239,7 @@ export default function AiAnalysisPanel({
   const [retryRequest, setRetryRequest] = useState(null);
   const [completionNotice, setCompletionNotice] = useState('');
   const [showAccessDetails, setShowAccessDetails] = useState(false);
+  const [unavailableFeature, setUnavailableFeature] = useState(null);
   const abortRef = useRef(null);
   const pollTimerRef = useRef(null);
 
@@ -300,7 +302,7 @@ export default function AiAnalysisPanel({
     loadHistory();
   }, [slide.id, stopPolling, loadHistory]);
 
-  const startPollingJob = useCallback((jobId, autoTissue) => {
+  const startPollingJob = useCallback((jobId, autoTissue, featureCode) => {
     stopPolling();
     const poll = async () => {
       try {
@@ -323,7 +325,7 @@ export default function AiAnalysisPanel({
           stopPolling();
           setRunning(false);
           setActiveJob(null);
-          setRetryRequest({ autoTissue });
+          setRetryRequest({ autoTissue, featureCode });
           onError?.(job.error || 'AI analysis failed');
         } else if (job.status === 'cancelled') {
           stopPolling();
@@ -361,13 +363,14 @@ export default function AiAnalysisPanel({
   }, [activeJob, stopPolling]);
 
   // ── Run AI analysis ───────────────────────────────────────────────────────
-  const runAnalysis = useCallback(async (autoTissue = false) => {
-    if (running || !['HOVERNET', 'MITOTIC_DETECTION'].includes(selectedFeatureCode) ||
+  const runAnalysis = useCallback(async (autoTissue = false, featureCode = selectedFeatureCode) => {
+    if (running || !['HOVERNET', 'MITOTIC_DETECTION'].includes(featureCode) ||
         !(entitlements?.features || []).some((feature) =>
-          feature.feature_code === selectedFeatureCode &&
+          feature.feature_code === featureCode &&
           feature.is_entitled && feature.is_active &&
           feature.is_implemented && feature.user_enabled
         )) return;
+    setSelectedFeatureCode(featureCode);
     setRunning(true);
     setActiveJob(null);
     setSelectedNucleus(null);
@@ -379,7 +382,7 @@ export default function AiAnalysisPanel({
     try {
       const freshEntitlements = await aiSubscriptionService.entitlements(abortRef.current.signal);
       setEntitlements(freshEntitlements);
-      if (!freshEntitlements?.effective_feature_codes?.includes(selectedFeatureCode)) {
+      if (!freshEntitlements?.effective_feature_codes?.includes(featureCode)) {
         throw new Error('This AI feature is no longer available to your account.');
       }
     } catch (err) {
@@ -389,10 +392,10 @@ export default function AiAnalysisPanel({
       return;
     }
     const payload = autoTissue
-      ? { feature_code: selectedFeatureCode, auto_tissue: true }
+      ? { feature_code: featureCode, auto_tissue: true }
       : roiRect
         ? {
-            feature_code: selectedFeatureCode,
+            feature_code: featureCode,
             x: Math.round(roiRect.x),
             y: Math.round(roiRect.y),
             width: Math.round(roiRect.width),
@@ -402,7 +405,7 @@ export default function AiAnalysisPanel({
             roi_width: Math.round(roiRect.width),
             roi_height: Math.round(roiRect.height),
           }
-        : { feature_code: selectedFeatureCode, auto_tissue: true };
+        : { feature_code: featureCode, auto_tissue: true };
 
     try {
       const result = await viewerService.runAiAnalysis(slide.id, payload, abortRef.current.signal);
@@ -421,7 +424,7 @@ export default function AiAnalysisPanel({
             stage: 'Started inference worker...',
           },
         });
-        startPollingJob(result.job_id, autoTissue);
+        startPollingJob(result.job_id, autoTissue, featureCode);
       } else if (result) {
         // Completed synchronously (small ROI)
         setDetail(result);
@@ -434,7 +437,7 @@ export default function AiAnalysisPanel({
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
-        setRetryRequest({ autoTissue });
+        setRetryRequest({ autoTissue, featureCode });
         onError?.(`AI analysis failed: ${err.message}`);
       }
       setRunning(false);
@@ -603,17 +606,34 @@ export default function AiAnalysisPanel({
           </p>
 
           <div className="ai-feature-selector">
-            <label htmlFor="ai-feature-select">AI feature</label>
-            <select id="ai-feature-select" value={selectedFeatureCode} onChange={(event) => setSelectedFeatureCode(event.target.value)} disabled={running} aria-label="Select permitted AI feature">
-              {availableFeatures.map((feature) => (
-                <option key={feature.feature_code} value={feature.feature_code}>
-                  {feature.catalog_title || feature.feature_name}
-                </option>
-              ))}
-            </select>
-            {selectedFeature?.description && (
-              <p className="ai-feature-selector__description">{selectedFeature.description}</p>
-            )}
+            <p className="ai-feature-selector__label">AI features on this slide</p>
+            <div className="ai-feature-list">
+              {availableFeatures.map((feature) => {
+                const executable = ['HOVERNET', 'MITOTIC_DETECTION'].includes(feature.feature_code);
+                const saved = analyses.find((item) => (item.feature_code || (isKongNetAnalysis(item) ? 'MITOTIC_DETECTION' : 'HOVERNET')) === feature.feature_code);
+                const viewing = detail?.id === saved?.id;
+                const featureTitle = feature.catalog_title || feature.feature_name;
+                const featureSummary = feature.catalog_summary || feature.description;
+                return (
+                  <div className={`ai-feature-list__item${selectedFeatureCode === feature.feature_code ? ' is-selected' : ''}`} key={feature.feature_code}>
+                    <div>
+                      <strong>{featureTitle}</strong>
+                      <span>{!executable ? 'Cannot run in the viewer' : saved ? (viewing ? 'Showing on slide' : 'Saved on this slide') : 'Not run on this slide'}</span>
+                      {featureSummary && <p className="ai-feature-list__tip" role="tooltip">{featureSummary}</p>}
+                    </div>
+                    <div className="ai-feature-list__actions">
+                      {saved && (
+                        <button type="button" onClick={() => selectAnalysis(saved.id)} disabled={running || viewing}>Show</button>
+                      )}
+                      <button type="button" onClick={() => { if (!executable) { setUnavailableFeature(featureTitle); return; } setSelectedFeatureCode(feature.feature_code); }} disabled={running} aria-pressed={selectedFeatureCode === feature.feature_code}>
+                        {selectedFeatureCode === feature.feature_code ? 'Selected' : 'Use'}
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="ai-feature-selector__description">This slide can run HoVer-Net and KongNet. Both results stay saved. The other two models do not run by adding another slide.</p>
           </div>
 
           {completionNotice && <p className="ai-completion-notice" role="status">{completionNotice}</p>}
@@ -752,7 +772,7 @@ export default function AiAnalysisPanel({
                 Auto-Detect &amp; Analyze
               </button>
               {retryRequest && (
-                <button type="button" className="ai-action-btn ai-action-btn--secondary" onClick={() => runAnalysis(retryRequest.autoTissue)}>
+                <button type="button" className="ai-action-btn ai-action-btn--secondary" onClick={() => runAnalysis(retryRequest.autoTissue, retryRequest.featureCode)}>
                   Retry last analysis
                 </button>
               )}
@@ -937,7 +957,7 @@ export default function AiAnalysisPanel({
               >
                 {analyses.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {isKongNetAnalysis(a) ? `${a.candidate_count ?? a.total_nuclei ?? '?'} candidates` : `${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
+                    {isKongNetAnalysis(a) ? 'KongNet' : (a.model_name || 'HoVer-Net')} · {isKongNetAnalysis(a) ? `${a.candidate_count ?? a.total_nuclei ?? '?'} candidates` : `${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
                   </option>
                 ))}
               </select>
@@ -945,6 +965,9 @@ export default function AiAnalysisPanel({
           )}
         </>
       )}
+      <Modal open={Boolean(unavailableFeature)} title="This AI feature cannot run" onClose={() => setUnavailableFeature(null)} footer={<button type="button" className="modal-button modal-button--secondary" onClick={() => setUnavailableFeature(null)}>Close</button>}>
+        <p>This slide can run HoVer-Net and KongNet-Det. Both can be used here, and each result stays saved. {unavailableFeature} is one of the other two models. Adding another slide does not run it. GrandQC and Camelyon are still not connected to the viewer, so they cannot be started on any slide.</p>
+      </Modal>
     </section>
   );
 }

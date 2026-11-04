@@ -1,6 +1,6 @@
 .patient-profile {
-    min-height: 100vh;
-    padding: var(--spacing-lg) var(--spacing-xl);
+    min-height: 0;
+    padding: 20px;
     color: var(--color-text);
     background: var(--color-background);
 }
@@ -10,9 +10,9 @@
 .patient-profile__metrics,
 .patient-profile__tabs,
 .patient-profile__content {
-    max-width: 1500px;
-    margin-right: auto;
-    margin-left: auto;
+    max-width: none;
+    margin-right: 0;
+    margin-left: 0;
 }
 
 .patient-profile__topbar {
@@ -579,4 +579,93 @@
     .patient-document-form {
         grid-template-columns: 1fr;
     }
+}
+
+.patient-profile {
+    color: #303030;
+    background: #fff;
+}
+
+.patient-profile__identity,
+.patient-profile__metrics,
+.patient-profile__tabs,
+.patient-profile__content,
+.patient-profile__section,
+.patient-data-card {
+    color: #303030;
+    background: #fff;
+    border-color: #e4e4e4;
+}
+
+.patient-profile__identity {
+    border-radius: 3px 3px 0 0;
+}
+
+.patient-profile__content {
+    border-radius: 0 0 3px 3px;
+    background: #fff;
+}
+
+.patient-profile__metrics {
+    background: #fafafa;
+}
+
+.patient-profile__tab--active {
+    color: #303030;
+    background: #fae9e9;
+}
+
+.patient-profile__actions .btn-primary,
+.patient-profile__actions .btn-control-secondary,
+.patient-profile__actions .btn-patient-delete {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 36px;
+    padding: 0 14px;
+    border-radius: 18px;
+    font-weight: 700;
+}
+
+.patient-profile__actions .btn-primary,
+.patient-profile__actions .btn-control-secondary {
+    color: #303030;
+    background: #fff;
+    border: 1px solid #d8d8d8;
+}
+
+.patient-profile__actions .btn-patient-delete {
+    color: #9d2c2c;
+    background: #fff;
+    border: 1px solid #e3b4b4;
+}
+
+html[data-theme='dark'] .patient-profile,
+html[data-theme='dark'] .patient-profile__identity,
+html[data-theme='dark'] .patient-profile__metrics,
+html[data-theme='dark'] .patient-profile__tabs,
+html[data-theme='dark'] .patient-profile__content,
+html[data-theme='dark'] .patient-profile__section,
+html[data-theme='dark'] .patient-data-card,
+html[data-theme='dark'] .patient-history-summary article {
+    color: #f2f2f2;
+    background: #1c1c1c;
+    border-color: #333;
+}
+
+html[data-theme='dark'] .patient-profile__metrics {
+    background: #181818;
+}
+
+html[data-theme='dark'] .patient-profile__tab--active {
+    color: #f2f2f2;
+    background: #3a2424;
+}
+
+html[data-theme='dark'] .patient-profile__actions .btn-primary,
+html[data-theme='dark'] .patient-profile__actions .btn-control-secondary,
+html[data-theme='dark'] .patient-profile__actions .btn-patient-delete {
+    color: #f2f2f2;
+    background: #1c1c1c;
+    border-color: #444;
 }
