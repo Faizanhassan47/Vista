@@ -24,6 +24,17 @@
   animation: modal-enter 160ms ease-out;
 }
 
+.global-modal--wide {
+  width: min(100%, 860px);
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+}
+
+.global-modal--wide .global-modal__body {
+  overflow: auto;
+}
+
 .global-modal__header,
 .global-modal__footer {
   display: flex;

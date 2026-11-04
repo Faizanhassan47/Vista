@@ -19,7 +19,7 @@ const pages = {
 
 export default function ClinicalShell({ children, pageTitle, pageSubtitle, backTo }) {
   const { pathname, search: locationSearch } = useLocation();
-  const createCasePage = pathname === '/create-case' || (pathname === '/cases' && new URLSearchParams(locationSearch).get('createCase') === '1');
+  const createCasePage = pathname === '/create-case' || pathname.startsWith('/case-library/') || (pathname === '/cases' && new URLSearchParams(locationSearch).get('createCase') === '1');
   const [defaultTitle] = pathname.startsWith('/patients/')
     ? ['Patient Profile', '']
     : (pages[pathname] || ['Pathology workspace', '']);

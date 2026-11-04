@@ -863,8 +863,15 @@
 }
 
 .case-library {
+    padding: 0 0 24px;
     color: #303030;
     background: #fff;
+}
+
+html[data-theme='dark'] .case-library,
+html[data-theme='dark'] .patient-directory.case-library {
+    color: #f2f2f2;
+    background: #121212;
 }
 
 .case-library__filters {
@@ -968,12 +975,18 @@
 .case-library__data-table--reference td:nth-child(7),
 .case-library__data-table--reference th:nth-child(8),
 .case-library__data-table--reference td:nth-child(8) {
-    width: 16%;
+    width: 14%;
 }
 
 .case-library__data-table--reference th:last-child,
 .case-library__data-table--reference td:last-child {
-    width: 3%;
+    width: 36px;
+    padding-right: 8px;
+    text-align: right;
+}
+
+.case-library__open-mark {
+    color: #303030;
 }
 
 .case-library__data-table--reference th {
@@ -990,8 +1003,133 @@
     font-size: 14px;
 }
 
-.case-library__data-table--reference tbody tr:hover td {
+.case-library__data-table--reference tbody tr {
+    cursor: pointer;
+}
+
+.case-library__data-table--reference tbody tr:hover td,
+.case-library__data-table--reference tbody tr.is-selected td {
     background: #fae9e9;
+}
+
+.case-library__preview {
+   
+    color: #303030;
+    border-top: 1px solid #e6e6e6;
+}
+
+.case-library__preview .create-case-page__grid {
+    max-width: none;
+}
+
+.case-library__preview .create-case-page__row > span,
+.case-library__preview .create-case-page__case-id > label {
+    color: #707070;
+}
+
+.case-library__preview .create-case-page__row > input,
+.case-library__preview .create-case-page__case-id input {
+    color: #303030;
+    background: #fff;
+}
+
+.case-library__preview .create-case-page__uploads {
+    min-height: 280px;
+    border: 1px solid #e3e3e3;
+    background: #fff;
+}
+
+.case-library__remove-case {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: clamp(34px, 2.55vw, 49px);
+    padding: 5px 18px;
+    color: #9d2c2c;
+    background: #fff;
+    border: 1px solid #e3b4b4;
+    border-radius: 18px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.case-library__preview .create-case-page__actions .btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: clamp(133px, 11.9vw, 228px);
+    min-height: clamp(34px, 2.55vw, 49px);
+    color: #fff;
+    background: #2d2d2d;
+    border: 1px solid #2d2d2d;
+    border-radius: 18px;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.case-library__slide-frame {
+    cursor: default;
+    overflow: hidden;
+    background: #fff;
+}
+
+.case-library__slide-frame img {
+    display: block;
+    width: 100%;
+    max-height: 240px;
+    object-fit: contain;
+    background: #fff;
+}
+
+.case-library__preview .create-case-page__attachment {
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    background: #fff;
+}
+
+.case-library__preview .create-case-page__attachment.is-active {
+    background: #fae9e9;
+}
+
+html[data-theme='dark'] .case-library__preview {
+    color: #f2f2f2;
+    border-top-color: #333;
+}
+
+html[data-theme='dark'] .case-library__preview .create-case-page__row > span,
+html[data-theme='dark'] .case-library__preview .create-case-page__case-id > label {
+    color: #d0d0d0;
+    background: #1c1c1c;
+}
+
+html[data-theme='dark'] .case-library__preview .create-case-page__row {
+    border-color: #333;
+}
+
+html[data-theme='dark'] .case-library__preview .create-case-page__row > input,
+html[data-theme='dark'] .case-library__preview .create-case-page__case-id input,
+html[data-theme='dark'] .case-library__preview .create-case-page__uploads,
+html[data-theme='dark'] .case-library__preview .create-case-page__attachment,
+html[data-theme='dark'] .case-library__remove-case {
+    color: #f2f2f2;
+    background: #242424;
+    border-color: #3a3a3a;
+}
+
+html[data-theme='dark'] .case-library__slide-frame,
+html[data-theme='dark'] .case-library__slide-frame img {
+    background: #121212;
+}
+
+html[data-theme='dark'] .case-library__preview .create-case-page__attachment.is-active {
+    background: #3a2424;
+}
+
+html[data-theme='dark'] .case-library__remove-case {
+    color: #f0b4b4;
 }
 
 .case-library__data-table--reference .case-library__row-actions {
@@ -1003,7 +1141,13 @@
 }
 
 .case-library__data-table--reference .case-library__row-action {
-    display: none;
+    display: grid;
+    margin-left: auto;
+    color: #303030;
+}
+
+.case-library__data-table--reference td:last-child {
+    overflow: visible;
 }
 
 .case-library__filters {

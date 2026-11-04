@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronRight, ClipboardList, Eye, LayoutList, MoreHorizontal, Plus, Search, SlidersHorizontal, Table2, Trash2, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { ClipboardList, Eye, LayoutList, Plus, Search, SlidersHorizontal, Table2, Trash2, X } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { caseService } from '../../services/caseService';
 import { platformService } from '../../services/platformService';
 import Modal from '../../components/Modal/Modal';
@@ -9,6 +9,7 @@ import { isAdministratorRole } from '../../config/roles';
 import { notifyClinicalDataChanged } from '../../services/clinicalDataEvents';
 import Pagination from '../../components/Pagination/Pagination';
 import FilterBar from '../../components/FilterBar/FilterBar';
+import ReferenceTable from '../../components/ReferenceTable/ReferenceTable';
 import './CaseLibrary.css';
 
 function formatDate(value) {
@@ -23,6 +24,7 @@ function caseStatus(caseItem) {
 
 export default function CaseLibrary() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [cases, setCases] = useState([]);
   const [query, setQuery] = useState('');
   const [patientIdFilter, setPatientIdFilter] = useState('');
@@ -44,9 +46,6 @@ export default function CaseLibrary() {
   const [error, setError] = useState('');
   const [casePendingRemoval, setCasePendingRemoval] = useState(null);
   const [removing, setRemoving] = useState(false);
-  const [actionMenuCaseId, setActionMenuCaseId] = useState(null);
-  const actionMenuRef = useRef(null);
-
   const pageSize = 25;
 
   useEffect(() => {
@@ -71,13 +70,6 @@ export default function CaseLibrary() {
   }, [assignedToMe, debouncedQuery, page, sort, status]);
 
   useEffect(() => { setPage(0); setSelected(null); }, [assignedToMe, debouncedQuery, sort, status]);
-  useEffect(() => {
-    const closeMenu = (event) => {
-      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) setActionMenuCaseId(null);
-    };
-    window.addEventListener('pointerdown', closeMenu);
-    return () => window.removeEventListener('pointerdown', closeMenu);
-  }, []);
   const active = selected || cases[0] || null;
   const filterSuggestions = (getValue) => {
     const seen = new Set();
@@ -158,23 +150,23 @@ export default function CaseLibrary() {
     <div className={`case-library__layout${view === 'table' ? ' case-library__layout--worklist' : ''}`}>
       <section>
 
-        {view === 'table' ? <div className="case-library__data-table-wrap"><table className="case-library__data-table case-library__data-table--reference"><thead><tr><th>Sr. #</th><th>Case ID</th><th>Patient ID</th><th>Patient Name</th><th>Pathologist</th><th>Slides</th><th>Created At</th><th>Updated At</th><th><span className="sr-only">Open case</span></th></tr></thead><tbody>
-          {loading ? Array.from({ length: 5 }, (_, index) => <tr key={index}><td colSpan="9"><div className="case-library__table-skeleton" aria-hidden="true" /></td></tr>) : visibleCases.map((caseItem, rowIndex) => {
-            const slides = caseItem.slide_count ?? caseItem.slides?.length ?? 0;
-            return <tr key={caseItem.id}>
-              <td>{page * pageSize + rowIndex + 1}</td>
-              <td>{caseItem.case_id || `Case ${caseItem.id}`}</td>
-              <td>{caseItem.patient_identifier || caseItem.patient_id || caseItem.medical_record_number || 'Not recorded'}</td>
-              <td>{caseItem.patient_name || 'Not recorded'}</td>
-              <td>{caseItem.reviewer || 'Unassigned'}</td>
-              <td>{String(slides).padStart(2, '0')}</td>
-              <td>{formatDate(caseItem.created_at)}</td>
-              <td>{formatDate(caseItem.updated_at || caseItem.created_at)}</td>
-              <td><div className="case-library__row-actions" ref={actionMenuCaseId === caseItem.id ? actionMenuRef : null}><Link className="case-library__row-open" to={`/cases?case=${caseItem.id}`} aria-label={`Open ${caseItem.case_id || `case ${caseItem.id}`}`}><ChevronRight size={18} /></Link>{canDeleteCases && <><button type="button" className="case-library__row-action" onClick={() => setActionMenuCaseId((current) => current === caseItem.id ? null : caseItem.id)} aria-label={`More actions for ${caseItem.case_id || `case ${caseItem.id}`}`} aria-expanded={actionMenuCaseId === caseItem.id}><MoreHorizontal size={18} /></button>{actionMenuCaseId === caseItem.id && <div className="case-library__action-menu" role="menu"><button type="button" role="menuitem" onClick={() => { setActionMenuCaseId(null); setCasePendingRemoval(caseItem); }}><Trash2 size={15} />Remove case</button></div>}</>}</div></td>
-            </tr>;
-          })}
-          {!loading && !visibleCases.length && <tr><td colSpan="9"><div className="case-library__empty"><ClipboardList size={26} /><strong>No cases found</strong><span>Adjust the search or status filter to find a case.</span></div></td></tr>}
-        </tbody></table></div> : <div className="case-library__list">
+        {view === 'table' ? <ReferenceTable
+          loading={loading}
+          rows={visibleCases}
+          rowKey={(caseItem) => caseItem.id}
+          onRowClick={(caseItem) => navigate(`/case-library/${caseItem.id}`)}
+          empty="No cases found. Adjust the search or status filter to find a case."
+          columns={[
+            { key: 'sr', label: 'Sr. #', width: '5%', render: (_, index) => page * pageSize + index + 1 },
+            { key: 'case', label: 'Case ID', width: '10%', render: (caseItem) => caseItem.case_id || `Case ${caseItem.id}` },
+            { key: 'patientId', label: 'Patient ID', width: '13%', render: (caseItem) => caseItem.patient_identifier || caseItem.patient_id || caseItem.medical_record_number || 'Not recorded' },
+            { key: 'patientName', label: 'Patient Name', width: '16%', render: (caseItem) => caseItem.patient_name || 'Not recorded' },
+            { key: 'pathologist', label: 'Pathologist', width: '14%', render: (caseItem) => caseItem.reviewer || 'Unassigned' },
+            { key: 'slides', label: 'Slides', width: '8%', render: (caseItem) => String(caseItem.slide_count ?? caseItem.slides?.length ?? 0).padStart(2, '0') },
+            { key: 'created', label: 'Created At', width: '14%', render: (caseItem) => formatDate(caseItem.created_at) },
+            { key: 'updated', label: 'Updated At', width: '14%', render: (caseItem) => formatDate(caseItem.updated_at || caseItem.created_at) },
+          ]}
+        /> : <div className="case-library__list">
           {loading ? Array.from({ length: 5 }, (_, index) => <div key={index} className="case-library__skeleton" aria-hidden="true" />) : cases.map((caseItem) => {
             const status = caseStatus(caseItem);
             const slides = caseItem.slide_count ?? caseItem.slides?.length ?? 0;

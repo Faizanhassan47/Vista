@@ -464,10 +464,15 @@
   padding: 32px clamp(20px, 3vw, 48px) 48px;
 }
 
-.admin-page-inner {
-  width: 100%;
-  max-width: 1680px;
-  margin: 0 auto;
+
+
+.admin-page-content.admin-page-content--flush {
+  padding: 0;
+}
+
+.admin-page-inner--flush {
+  max-width: none;
+  margin: 0;
 }
 
 .admin-route-nav {
@@ -653,4 +658,21 @@
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
   line-height: 1.4;
+}
+
+.users-list-container .reference-table-wrap {
+  overflow-x: auto;
+}
+
+.users-list-container .reference-table {
+  min-width: 980px;
+  table-layout: auto;
+}
+
+.users-list-container .reference-table__fit {
+  white-space: nowrap;
+}
+
+.users-list-container .action-buttons {
+  flex-wrap: nowrap;
 }

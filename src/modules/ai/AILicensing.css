@@ -1,7 +1,8 @@
 .ai-license-panel {
     display: grid;
-    gap: var(--spacing-lg);
-    color: var(--color-text);
+    gap: 16px;
+    padding: 10px;
+    color: #303030;
 }
 
 .ai-license-header {
@@ -47,10 +48,10 @@
     grid-template-columns: auto 1fr;
     align-items: center;
     gap: var(--spacing-xs) var(--spacing-sm);
-    padding: var(--spacing-lg);
-    background: var(--color-surface);
-    border: var(--border-width) solid var(--color-border);
-    border-radius: var(--radius-md);
+    padding: 16px;
+    background: #fff;
+    border: 1px solid #e4e4e4;
+    border-radius: 3px;
 }
 
 .ai-license-summary svg {
@@ -58,9 +59,8 @@
 }
 
 .ai-license-summary span {
-    color: var(--color-text-muted);
-    font-size: var(--font-size-xs);
-    text-transform: uppercase;
+    color: #707070;
+    font-size: 12px;
 }
 
 .ai-license-summary strong {
@@ -123,8 +123,11 @@
 
 .ai-license-notice {
     margin: 0;
-    background: var(--color-surface-subtle);
-    border-left: 3px solid var(--color-primary);
+    padding: 12px 14px;
+    color: #606060;
+    background: #f6f6f6;
+    border: 1px solid #e4e4e4;
+    border-radius: 3px;
 }
 
 @media (max-width: 900px) {

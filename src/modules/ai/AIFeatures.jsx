@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { aiSubscriptionService } from '../../services/aiSubscriptionService';
 import FilterBar from '../../components/FilterBar/FilterBar';
+import Pagination from '../../components/Pagination/Pagination';
 import { modelListing } from './aiListing';
 import './AIFeatures.css';
 
@@ -22,6 +23,8 @@ export default function AIFeatures() {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState('All models');
   const [updatingPreferenceId, setUpdatingPreferenceId] = useState(null);
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -82,7 +85,7 @@ export default function AIFeatures() {
     {!data && !error && <div className="ai-store__loading"><span className="loading-spinner" /> Loading the AI model catalog…</div>}
 
     {data && <section className="ai-store__grid" aria-label="AI model catalog">
-      {models.map((feature) => {
+      {models.slice(page * pageSize, page * pageSize + pageSize).map((feature) => {
         const detail = modelListing(feature);
         const Icon = detail.icon;
         const state = accessState(feature, data.subscription);
@@ -100,6 +103,7 @@ export default function AIFeatures() {
         </article>;
       })}
       {!models.length && <div className="ai-store__empty"><Search size={24} /><h2>No matching models</h2><p>Try a different search phrase or availability filter.</p><button type="button" className="btn-control-secondary" onClick={() => { setQuery(''); setFilter('All models'); }}>Clear filters</button></div>}
+      <Pagination page={page} pageSize={pageSize} total={models.length} onPageChange={setPage} label="AI model pages" />
     </section>}
   </main>;
 }

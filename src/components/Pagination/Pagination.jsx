@@ -1,12 +1,14 @@
 import './Pagination.css';
-import Button from '../Button/Button';
 
 export default function Pagination({ page, pageSize, total, onPageChange, disabled = false, label = 'Pagination' }) {
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  if (total <= pageSize) return null;
+  const safeTotal = Number(total) || 0;
+  const totalPages = Math.max(1, Math.ceil(safeTotal / pageSize));
+  const start = safeTotal ? page * pageSize + 1 : 0;
+  const end = Math.min(safeTotal, (page + 1) * pageSize);
   return <nav className="pagination" aria-label={label}>
-    <Button size="sm" type="button" disabled={disabled || page <= 0} onClick={() => onPageChange(page - 1)}>Previous</Button>
-    <span>Page {page + 1} of {totalPages}</span>
-    <Button size="sm" type="button" disabled={disabled || page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>Next</Button>
+    <span className="pagination__count">{start}–{end} of {safeTotal}</span>
+    <button type="button" disabled={disabled || page <= 0} onClick={() => onPageChange(page - 1)}>Previous</button>
+    <span className="pagination__page">Page {page + 1} of {totalPages}</span>
+    <button type="button" disabled={disabled || page >= totalPages - 1} onClick={() => onPageChange(page + 1)}>Next</button>
   </nav>;
 }

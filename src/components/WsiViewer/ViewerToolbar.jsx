@@ -56,7 +56,9 @@ export default function ViewerToolbar({
   setDrawMode,
 }) {
   const [annotationMenuOpen, setAnnotationMenuOpen] = useState(false);
+  const [offset, setOffset] = useState(null);
   const annotationMenuRef = useRef(null);
+  const toolbarRef = useRef(null);
   const isAdjusted = brightness !== 100 || contrast !== 100 || gamma !== 1.0;
   const isTransformed = rotation !== 0 || flipH || flipV;
 
@@ -73,8 +75,40 @@ export default function ViewerToolbar({
     setAnnotationMenuOpen(false);
   };
 
+  const dragToolbar = (event) => {
+    if (event.button !== 0) return;
+    const toolbar = toolbarRef.current;
+    const bounds = toolbar?.parentElement?.getBoundingClientRect();
+    const start = toolbar?.getBoundingClientRect();
+    if (!bounds || !start) return;
+    const originX = event.clientX;
+    const originY = event.clientY;
+    const startLeft = start.left - bounds.left;
+    const startTop = start.top - bounds.top;
+    const move = (pointer) => {
+      const maxLeft = Math.max(0, bounds.width - start.width);
+      const maxTop = Math.max(0, bounds.height - start.height);
+      setOffset({
+        left: Math.min(maxLeft, Math.max(0, startLeft + pointer.clientX - originX)),
+        top: Math.min(maxTop, Math.max(0, startTop + pointer.clientY - originY)),
+      });
+    };
+    const stop = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', stop);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', stop);
+  };
+
   return (
-    <nav className={`advanced-viewer-toolbar${annotationMenuOpen ? ' advanced-viewer-toolbar--annotation-open' : ''}`} aria-label="Whole-slide image controls">
+    <nav
+      ref={toolbarRef}
+      className={`advanced-viewer-toolbar${annotationMenuOpen ? ' advanced-viewer-toolbar--annotation-open' : ''}${offset ? ' advanced-viewer-toolbar--moved' : ''}`}
+      style={offset ? { left: offset.left, top: offset.top } : undefined}
+      aria-label="Whole-slide image controls"
+    >
+      <button type="button" className="toolbar-drag" aria-label="Move toolbar" title="Drag to move. Double-click to return to the top." onPointerDown={dragToolbar} onDoubleClick={() => setOffset(null)} />
       {/* Group 1: Zoom & Navigation */}
       <div className="toolbar-group" role="group" aria-label="Zoom and View">
         <button
@@ -175,17 +209,7 @@ export default function ViewerToolbar({
 
       {/* Group 4: Overlay & Layer Toggles */}
       <div className="toolbar-group" role="group" aria-label="Overlays and Layers">
-        <button
-          type="button"
-          className={`btn-toolbar ${trailVisible ? 'btn-toolbar--active' : ''}`}
-          onClick={onToggleTrail}
-          title="Toggle viewing trail coverage (T)"
-          aria-pressed={trailVisible}
-          aria-label="Toggle viewing trail coverage"
-        >
-          <Footprints size={16} />
-          <span className="toolbar-btn-text">Trail</span>
-        </button>
+    
         <div className="annotation-toolbar-menu" ref={annotationMenuRef}>
           <button type="button" className={`btn-toolbar ${annotationMenuOpen || drawMode ? 'btn-toolbar--active' : ''}`} onClick={() => setAnnotationMenuOpen((open) => !open)} title="Annotation tools" aria-expanded={annotationMenuOpen} aria-haspopup="menu">
             {annotationsVisible ? <Eye size={16} /> : <EyeOff size={16} />}
@@ -207,8 +231,8 @@ export default function ViewerToolbar({
             type="button"
             className="btn-toolbar"
             onClick={onOpenCompare}
-            title="Compare this slide with another slide side by side"
-            aria-label="Compare slides side by side"
+            title="Open or close side by side"
+            aria-label="Open or close side by side"
           >
             <SplitSquareVertical size={16} />
             <span className="toolbar-btn-text">Side by side</span>

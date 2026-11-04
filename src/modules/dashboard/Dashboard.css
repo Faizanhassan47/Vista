@@ -245,15 +245,33 @@
 
 .dashboard-card__icon {
   position: absolute;
-  right: 24px;
-  bottom: 13px;
-  color: #dedede;
+  right: 18px;
+  bottom: 16px;
+  width: 92px;
+  height: 76px;
+  color: #e4e4e4;
   transition: color 150ms ease;
 }
 
 .dashboard-card:hover .dashboard-card__icon,
 .dashboard-card--active .dashboard-card__icon {
   color: rgba(255, 255, 255, .34);
+}
+
+html[data-theme='dark'] .dashboard-home__content h1,
+html[data-theme='dark'] .dashboard-home__content h2 {
+  color: #c8c8c8;
+  border-color: #333;
+}
+
+html[data-theme='dark'] .dashboard-card {
+  color: #f2f2f2;
+  background: #1c1c1c;
+  border-color: #333;
+}
+
+html[data-theme='dark'] .dashboard-card__icon {
+  color: #4a4a4a;
 }
 
 .dashboard-home a:focus-visible,
@@ -292,8 +310,8 @@
   }
 
   .dashboard-home__content {
-    padding-right: 20px;
-    padding-left: 20px;
+    padding-right: 30px;
+    padding-left: 30px;
   }
 
   .dashboard-home__content h1 {

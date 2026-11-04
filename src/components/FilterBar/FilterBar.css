@@ -61,13 +61,18 @@
 
 .library-filters--case-reference .library-filters__date-field > div {
     grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr);
-    gap: 5px;
-    font-size: 8px;
+    gap: 6px;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 700;
 }
 
 .library-filters--case-reference .library-filters__date-field input {
     min-width: 0;
-    padding: 0 3px;
+    padding: 0 6px;
+    color: #5b6571;
+    font-size: 13px;
+    font-weight: 400;
 }
 
 .library-filters--slide {
@@ -128,7 +133,30 @@
 
 .library-filters__date-field > div input {
     padding: 0 6px;
-    color-scheme: light;
+}
+
+html[data-theme='dark'] .library-filters,
+html[data-theme='dark'] .library-filters--case-reference,
+html[data-theme='dark'] .library-filters__grid--toolbar {
+    color: #d0d0d0;
+    background: #1c1c1c;
+    border-color: #333;
+}
+
+html[data-theme='dark'] .library-filters h2,
+html[data-theme='dark'] .library-filters--case-reference h2,
+html[data-theme='dark'] .library-filters__field,
+html[data-theme='dark'] .library-filters--case-reference .library-filters__field {
+    color: #b5b5b5;
+}
+
+html[data-theme='dark'] .library-filters__field input,
+html[data-theme='dark'] .library-filters__field select,
+html[data-theme='dark'] .library-filters--case-reference .library-filters__field input,
+html[data-theme='dark'] .library-filters--case-reference .library-filters__field select {
+    color: #f2f2f2;
+    background: #121212;
+    border-color: #3a3a3a;
 }
 
 .library-filters__autocomplete-control {

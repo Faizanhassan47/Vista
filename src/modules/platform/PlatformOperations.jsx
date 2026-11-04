@@ -5,9 +5,10 @@ import {
   Sliders, Layers, Filter
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
 import { platformService } from '../../services/platformService';
 import FilterBar from '../../components/FilterBar/FilterBar';
+import Pagination from '../../components/Pagination/Pagination';
+import ReferenceTable from '../../components/ReferenceTable/ReferenceTable';
 import Hl7Sandbox from './Hl7Sandbox';
 import './PlatformOperations.css';
 
@@ -47,6 +48,8 @@ export default function PlatformOperations() {
 
   // Ingestion search/filter state
   const [ingestionFilter, setIngestionFilter] = useState('All');
+  const [ingestionPage, setIngestionPage] = useState(0);
+  const pageSize = 25;
   const [ingestionSearch, setIngestionSearch] = useState('');
   const [selectedJobIds, setSelectedJobIds] = useState([]);
 
@@ -126,6 +129,7 @@ export default function PlatformOperations() {
     const matchesSearch = !ingestionSearch || job.original_filename?.toLowerCase().includes(ingestionSearch.toLowerCase()) || job.adapter_name?.toLowerCase().includes(ingestionSearch.toLowerCase());
     return matchesFilter && matchesSearch;
   });
+  const ingestionPageItems = filteredIngestion.slice(ingestionPage * pageSize, ingestionPage * pageSize + pageSize);
   const ingestionSearchSuggestions = [...new Set(data.ingestion.flatMap((job) => [job.original_filename, job.adapter_name]).filter((value) => value !== null && value !== undefined && String(value).trim()).map(String))];
 
   const m = data.metrics || {};
@@ -272,31 +276,12 @@ export default function PlatformOperations() {
                 <p>Real-time active caseload per assigned pathologist.</p>
               </div>
             </header>
-            <div className="ops-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Pathologist</th>
-                    <th>Active Cases</th>
-                    <th>Urgent / Stat</th>
-                    <th>Overdue Cases</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(m.pathologist_workload || []).map((row, idx) => (
-                    <tr key={idx}>
-                      <td><strong>{row.pathologist}</strong></td>
-                      <td>{row.active_cases}</td>
-                      <td>{row.urgent_cases > 0 ? <span style={{ color: 'var(--color-danger)' }}>{row.urgent_cases}</span> : 0}</td>
-                      <td>{row.overdue_cases > 0 ? <span style={{ color: 'var(--color-danger)' }}>{row.overdue_cases}</span> : 0}</td>
-                    </tr>
-                  ))}
-                  {!(m.pathologist_workload || []).length && (
-                    <tr><td colSpan="4" className="ops-empty">No active assignments recorded.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <ReferenceTable showOpen={false} rows={m.pathologist_workload || []} rowKey={(_, index) => index} empty="No active assignments recorded." columns={[
+              { key: 'pathologist', label: 'Pathologist', render: (row) => row.pathologist },
+              { key: 'active', label: 'Active Cases', render: (row) => row.active_cases },
+              { key: 'urgent', label: 'Urgent / Stat', render: (row) => row.urgent_cases || 0 },
+              { key: 'overdue', label: 'Overdue Cases', render: (row) => row.overdue_cases || 0 },
+            ]} />
           </section>
         </div>
       )}
@@ -331,28 +316,23 @@ export default function PlatformOperations() {
             <div className="ops-queue-sections">
               <section className="ops-queue-section">
                 <header><div><h3>Cases requiring pathologist assignment</h3><p>Live cases that do not yet have a named pathologist.</p></div></header>
-                <div className="ops-table-wrap">
-                  <table>
-                    <thead><tr><th>Case</th><th>Description</th><th>Status</th><th>Priority</th><th>Created</th></tr></thead>
-                    <tbody>
-                      {data.workQueue.unassigned_cases.map((item) => <tr key={item.id}><td><Link to={`/cases?case=${item.id}`}>{item.case_id}</Link></td><td>{item.description || 'No description'}</td><td><Status value={item.status} /></td><td>{item.priority || 'Routine'}</td><td>{item.created_at ? new Date(item.created_at).toLocaleString() : '—'}</td></tr>)}
-                      {!data.workQueue.unassigned_cases.length && <tr><td colSpan="5" className="ops-empty">No unassigned cases.</td></tr>}
-                    </tbody>
-                  </table>
-                </div>
+                <ReferenceTable showOpen={false} rows={data.workQueue.unassigned_cases} rowKey={(item) => item.id} onRowClick={(item) => window.location.assign(`/cases?case=${item.id}`)} empty="No unassigned cases." columns={[
+                  { key: 'case', label: 'Case', render: (item) => item.case_id },
+                  { key: 'description', label: 'Description', render: (item) => item.description || 'No description' },
+                  { key: 'status', label: 'Status', render: (item) => item.status },
+                  { key: 'priority', label: 'Priority', render: (item) => item.priority || 'Routine' },
+                  { key: 'created', label: 'Created', render: (item) => item.created_at ? new Date(item.created_at).toLocaleString() : 'Not recorded' },
+                ]} />
               </section>
 
               <section className="ops-queue-section">
                 <header><div><h3>Slides needing rescan</h3><p>QC-rejected slides requiring technician action.</p></div></header>
-                <div className="ops-table-wrap">
-                  <table>
-                    <thead><tr><th>Slide</th><th>Case</th><th>Stain</th><th>QC note</th></tr></thead>
-                    <tbody>
-                      {data.workQueue.rescan_slides.map((item) => <tr key={item.id}><td>{item.label}</td><td><Link to={`/cases?case=${item.case_pk}&slide=${item.id}`}>{item.case_id}</Link></td><td>{item.stain || '—'}</td><td>{item.qc_note || 'No note'}</td></tr>)}
-                      {!data.workQueue.rescan_slides.length && <tr><td colSpan="4" className="ops-empty">No slides require rescan.</td></tr>}
-                    </tbody>
-                  </table>
-                </div>
+                <ReferenceTable showOpen={false} rows={data.workQueue.rescan_slides} rowKey={(item) => item.id} onRowClick={(item) => window.location.assign(`/cases?case=${item.case_pk}&slide=${item.id}`)} empty="No slides require rescan." columns={[
+                  { key: 'slide', label: 'Slide', render: (item) => item.label },
+                  { key: 'case', label: 'Case', render: (item) => item.case_id },
+                  { key: 'stain', label: 'Stain', render: (item) => item.stain || 'Not recorded' },
+                  { key: 'note', label: 'QC note', render: (item) => item.qc_note || 'No note' },
+                ]} />
               </section>
 
               {data.workQueue.reconciliation_items.length > 0 && (
@@ -363,37 +343,12 @@ export default function PlatformOperations() {
                     <p>WSI uploads with unmatched barcodes or patient identifiers.</p>
                   </div>
                 </header>
-                <div className="ops-table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Item ID</th>
-                        <th>Proposed Case</th>
-                        <th>Reason</th>
-                        <th>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.workQueue.reconciliation_items.map((rec) => (
-                        <tr key={rec.id}>
-                          <td>#{rec.id}</td>
-                          <td><strong>{rec.proposed_case_id || 'Unknown'}</strong></td>
-                          <td>{rec.reason}</td>
-                          <td>
-                            <button
-                              onClick={() => {
-                                const targetId = window.prompt('Enter valid Case ID to associate:');
-                                if (targetId) action(() => platformService.resolveReconciliation(rec.id, Number(targetId)), 'Reconciliation linked');
-                              }}
-                            >
-                              Resolve
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ReferenceTable showOpen={false} rows={data.workQueue.reconciliation_items} rowKey={(item) => item.id} columns={[
+                  { key: 'id', label: 'Item ID', render: (item) => `#${item.id}` },
+                  { key: 'case', label: 'Proposed Case', render: (item) => item.proposed_case_id || 'Unknown' },
+                  { key: 'reason', label: 'Reason', render: (item) => item.reason },
+                  { key: 'action', label: 'Action', fit: true, render: (item) => <button type="button" onClick={() => { const targetId = window.prompt('Enter valid Case ID to associate:'); if (targetId) action(() => platformService.resolveReconciliation(item.id, Number(targetId)), 'Reconciliation linked'); }}>Resolve</button> },
+                ]} />
               </section>
               )}
             </div>
@@ -420,62 +375,16 @@ export default function PlatformOperations() {
               { label: 'Ingestion status', type: 'select', value: ingestionFilter, onChange: setIngestionFilter, options: ['All', 'Queued', 'Processing', 'Completed', 'Quarantined', 'Failed', 'Duplicate'].map((value) => ({ value, label: value === 'All' ? 'All statuses' : value })) },
             ]} />
 
-            <div className="ops-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th style={{ width: '30px' }}>
-                      <input
-                        type="checkbox"
-                        checked={filteredIngestion.length > 0 && selectedJobIds.length === filteredIngestion.length}
-                        onChange={(e) => setSelectedJobIds(e.target.checked ? filteredIngestion.map(j => j.id) : [])}
-                      />
-                    </th>
-                    <th>File</th>
-                    <th>Adapter</th>
-                    <th>Status</th>
-                    <th>Validation & Calibration</th>
-                    <th>Progress</th>
-                    <th>Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredIngestion.length ? filteredIngestion.map((item) => (
-                    <tr key={item.id}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={selectedJobIds.includes(item.id)}
-                          onChange={() => toggleSelectJob(item.id)}
-                        />
-                      </td>
-                      <td>
-                        <strong>{item.original_filename}</strong>
-                        {item.match_identifier && <small style={{ display: 'block', color: 'var(--color-text-muted)' }}>ID: {item.match_identifier}</small>}
-                      </td>
-                      <td>{item.adapter_name}</td>
-                      <td><Status value={item.status} /></td>
-                      <td><ValidationSummary validation={item.validation} /></td>
-                      <td>{item.progress}%</td>
-                      <td>
-                        {item.status === 'Queued' && (
-                          <button onClick={() => action(() => platformService.processIngestion(item.id), 'Ingestion completed')}>
-                            Process
-                          </button>
-                        )}
-                        {['Failed', 'Quarantined', 'Cancelled'].includes(item.status) && (
-                          <button onClick={() => action(() => platformService.retryIngestion(item.id), 'Job re-queued')}>
-                            Retry
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan="7" className="ops-empty">No ingestion jobs match criteria.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <ReferenceTable showOpen={false} rows={ingestionPageItems} rowKey={(item) => item.id} empty="No ingestion jobs match criteria." columns={[
+              { key: 'select', label: '', fit: true, render: (item) => <input type="checkbox" checked={selectedJobIds.includes(item.id)} onChange={() => toggleSelectJob(item.id)} aria-label={`Select ${item.original_filename}`} /> },
+              { key: 'file', label: 'File', render: (item) => item.original_filename },
+              { key: 'adapter', label: 'Adapter', render: (item) => item.adapter_name },
+              { key: 'status', label: 'Status', render: (item) => item.status },
+              { key: 'validation', label: 'Validation & Calibration', fit: true, render: (item) => <ValidationSummary validation={item.validation} /> },
+              { key: 'progress', label: 'Progress', render: (item) => `${item.progress}%` },
+              { key: 'action', label: 'Action', fit: true, render: (item) => <>{item.status === 'Queued' && <button type="button" onClick={() => action(() => platformService.processIngestion(item.id), 'Ingestion completed')}>Process</button>}{['Failed', 'Quarantined', 'Cancelled'].includes(item.status) && <button type="button" onClick={() => action(() => platformService.retryIngestion(item.id), 'Job re-queued')}>Retry</button>}</> },
+            ]} />
+            <Pagination page={ingestionPage} pageSize={pageSize} total={filteredIngestion.length} onPageChange={setIngestionPage} label="Ingestion pages" />
           </section>
         </div>
       )}
@@ -489,34 +398,14 @@ export default function PlatformOperations() {
                 <p>Evidence-based verification matrix across pathology whole-slide scanners.</p>
               </div>
             </header>
-            <div className="ops-table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Manufacturer</th>
-                    <th>Model</th>
-                    <th>Software Version</th>
-                    <th>Format</th>
-                    <th>Import Method</th>
-                    <th>Validation Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.compatibility.length ? data.compatibility.map((item) => (
-                    <tr key={item.id}>
-                      <td><strong>{item.manufacturer}</strong></td>
-                      <td>{item.model}</td>
-                      <td>{item.software_version || 'Any'}</td>
-                      <td>{item.format}</td>
-                      <td>{item.import_method}</td>
-                      <td><Status value={item.validation_status} /></td>
-                    </tr>
-                  )) : (
-                    <tr><td colSpan="6" className="ops-empty">No validated scanners recorded.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <ReferenceTable showOpen={false} rows={data.compatibility} rowKey={(item) => item.id} empty="No validated scanners recorded." columns={[
+              { key: 'manufacturer', label: 'Manufacturer', render: (item) => item.manufacturer },
+              { key: 'model', label: 'Model', render: (item) => item.model },
+              { key: 'software', label: 'Software Version', render: (item) => item.software_version || 'Any' },
+              { key: 'format', label: 'Format', render: (item) => item.format },
+              { key: 'method', label: 'Import Method', render: (item) => item.import_method },
+              { key: 'status', label: 'Validation Status', render: (item) => item.validation_status },
+            ]} />
           </section>
         </div>
       )}

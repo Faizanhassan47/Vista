@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { Minus, Pencil, Plus, Save, Trash2, X } from 'lucide-react';
+import { Minus, Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { AI_LISTING, modelListing } from './aiListing';
+import Modal from '../../components/Modal/Modal';
 import './AIListingManager.css';
 
 const DEFAULT_USD_TO_PKR_RATE = 280;
@@ -49,8 +50,8 @@ export default function AIListingManager({ features, onSave, onRemove, onToggleF
   return <section className="ai-listing-manager" aria-labelledby="ai-listing-manager-title">
     <header className="ai-listing-manager__heading"><div><p className="page-eyebrow">Super Administrator</p><h2 id="ai-listing-manager-title">Manage AI Features</h2><p>Configure the cards users see without changing AI integrations, seats, or subscriptions.</p></div><button type="button" className="btn-primary" onClick={startAdd}><Plus size={16} />Add AI card</button></header>
     <section className="ai-listing-manager__cards" aria-label="Configured AI cards">{configured.map((feature) => { const detail = modelListing(feature); const active = Boolean(feature.is_active); return <article key={feature.id}><div><span>{feature.is_catalog_visible ? 'Visible' : 'Hidden'} · Order {feature.catalog_display_order || 0}</span><h3>{detail.title}</h3><p>{detail.summary}</p><ul>{detail.outputs.map((output) => <li key={output}>{output}</li>)}</ul></div><div className="ai-listing-manager__card-actions"><span className={`ai-listing-manager__availability${active ? ' ai-listing-manager__availability--active' : ''}`} role="status">{active ? 'Enabled platform-wide' : 'Disabled platform-wide'}</span><button type="button" className={active ? 'btn-control-secondary' : 'btn-primary'} disabled={saving || updatingFeatureId === feature.id} onClick={() => onToggleFeature(feature)}>{updatingFeatureId === feature.id ? 'Updating…' : active ? 'Disable model' : 'Enable model'}</button><button type="button" className="btn-control-secondary" onClick={() => setForm(formFor(feature))}><Pencil size={14} />Edit</button><button type="button" className="btn-delete" disabled={saving} onClick={() => removeCard(feature)}><Trash2 size={14} />Remove</button></div></article>; })}{!configured.length && <div className="ai-listing-manager__empty"><h3>No AI cards configured</h3><p>Add a card to make an integrated AI feature visible in the AI Features catalog.</p></div>}</section>
-    {form && <form className="ai-listing-form" onSubmit={submit}>
-      <header><h3>{isConfigured(selected || {}) ? 'Edit AI card' : 'Add AI card'}</h3><button type="button" className="btn-control-secondary" onClick={() => setForm(null)}><X size={15} />Close</button></header>
+    <Modal open={Boolean(form)} title={isConfigured(selected || {}) ? 'Edit AI card' : 'Add AI card'} className="global-modal--wide" onClose={() => !saving && setForm(null)} footer={<button type="submit" form="ai-card-form" className="btn-primary" disabled={!selected || saving}><Save size={15} />{saving ? 'Saving…' : 'Save AI card'}</button>}>
+    {form && <form id="ai-card-form" className="ai-listing-form" onSubmit={submit}>
       <label className="ai-listing-form__wide">AI integration<select required value={form.featureId} onChange={(event) => setForm(formFor(features.find((feature) => String(feature.id) === event.target.value)))}><option value="">Select an AI integration</option>{available.map((feature) => { const registry = AI_LISTING.find((item) => item.code === feature.feature_code); return <option key={feature.id} value={feature.id}>{registry?.name || feature.feature_name}{isConfigured(feature) ? ' — editing current card' : ''}</option>; })}</select><small>Each integration can have one card. Removed cards become available here again.</small></label>
       <label>Card title<input required maxLength="160" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></label>
       <label>Category<input required maxLength="80" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value })} /></label>
@@ -63,7 +64,7 @@ export default function AIListingManager({ features, onSave, onRemove, onToggleF
       <fieldset className="ai-listing-form__wide"><legend>Capabilities</legend>{form.outputs.map((output, index) => <div className="ai-listing-form__capability" key={`${index}-${output}`}><input required value={output} onChange={(event) => updateOutput(index, event.target.value)} placeholder="e.g. Nuclei detection" /><button type="button" className="btn-control-secondary" aria-label={`Remove capability ${index + 1}`} disabled={form.outputs.length === 1} onClick={() => removeOutput(index)}><Minus size={15} /></button></div>)}<button type="button" className="btn-control-secondary" onClick={() => setForm((current) => ({ ...current, outputs: [...current.outputs, ''] }))}><Plus size={15} />Add capability</button></fieldset>
       <label>Display order<input type="number" min="0" max="10000" value={form.displayOrder} onChange={(event) => setForm({ ...form, displayOrder: event.target.value })} /></label>
       <label className="ai-listing-form__toggle"><input type="checkbox" checked={form.isVisible} onChange={(event) => setForm({ ...form, isVisible: event.target.checked })} /><span>Visible on AI Features page</span></label>
-      <div className="ai-listing-form__actions"><button className="btn-primary" disabled={!selected || saving}><Save size={15} />{saving ? 'Saving…' : 'Save AI card'}</button></div>
     </form>}
+    </Modal>
   </section>;
 }

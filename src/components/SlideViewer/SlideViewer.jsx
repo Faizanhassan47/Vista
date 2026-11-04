@@ -14,7 +14,7 @@ export default function SlideViewer({ slide, zoom, setZoom, position, setPositio
   }, [position.x, position.y, zoom]);
 
   useEffect(() => {
-    if (slide.file_type === 'wsi') return;
+    if (slide.file_type === 'wsi' || slide.file_type === 'dicom-wsi') return;
     const keydown = (event) => {
       if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return;
       const panStep = 40;
@@ -59,7 +59,7 @@ export default function SlideViewer({ slide, zoom, setZoom, position, setPositio
     return () => window.removeEventListener('keydown', keydown);
   }, [slide.file_type, setPosition, setZoom]);
 
-  if (slide.file_type === 'wsi') return <WsiViewer slide={slide} onError={onError} syncViews={syncViews} syncedViewerRef={syncedViewerRef} externalViewerRef={viewerRef} onOpenRegistration={onOpenRegistration} onOpenCompare={onOpenCompare} activePanel={activePanel} />;
+  if (slide.file_type === 'wsi' || slide.file_type === 'dicom-wsi') return <WsiViewer slide={slide} onError={onError} syncViews={syncViews} syncedViewerRef={syncedViewerRef} externalViewerRef={viewerRef} onOpenRegistration={onOpenRegistration} onOpenCompare={onOpenCompare} activePanel={activePanel} />;
 
   const down = (event) => {
     setIsDragging(true);

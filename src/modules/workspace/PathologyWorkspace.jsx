@@ -285,6 +285,11 @@ export default function App() {
 
   const openSideBySideComparison = () => {
     if (!selectedSlide || !selectedCase) return;
+    if (splitView) {
+      setSplitView(false);
+      setCompareSlideIds([]);
+      return;
+    }
     if (compareSlideIds.length) {
       setSplitView(true);
       return;

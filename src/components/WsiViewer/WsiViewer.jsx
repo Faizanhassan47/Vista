@@ -1236,7 +1236,7 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   };
 
   return (
-    <div className="wsi-annotation-workspace" ref={workspaceRef}>
+    <div className={`wsi-annotation-workspace${fullscreen ? ' is-fullscreen' : ''}`} ref={workspaceRef}>
       <svg className="viewer-filter-definitions" aria-hidden="true">
         <defs>
           <filter id="wsi-red-channel" colorInterpolationFilters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0" /></filter>

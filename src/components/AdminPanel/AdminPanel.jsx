@@ -4,6 +4,8 @@ import { UserPlus, Users, KeyRound, Power, PowerOff, ShieldAlert, Sparkles, Sear
 import './AdminPanel.css';
 import { useAuth } from '../../modules/auth/AuthProvider';
 import Modal from '../Modal/Modal';
+import ReferenceTable from '../ReferenceTable/ReferenceTable';
+import Pagination from '../Pagination/Pagination';
 import { apiFetch } from '../../api';
 import { isAdministratorRole, isProtectedSuperAdmin, SUPER_ADMIN_ROLE, SYSTEM_ADMIN_ROLE, USER_ROLES } from '../../config/roles';
 import AISubscriptions from './AISubscriptions';
@@ -43,6 +45,8 @@ export default function AdminPanel({ API }) {
   const passwordInputRef = useRef(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
+  const [page, setPage] = useState(0);
+  const pageSize = 25;
   const visibleUsers = users.filter((item) => (isSuperAdmin || (item.role !== SUPER_ADMIN_ROLE && !isProtectedSuperAdmin(item.username)))
     && (roleFilter === 'All' || item.role === roleFilter)
     && `${item.username} ${item.display_name}`.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -275,56 +279,16 @@ export default function AdminPanel({ API }) {
             <label className="admin-search"><Search size={15} /><span className="sr-only">Search users</span><input value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="Search users" /></label>
             <label><span className="sr-only">Filter users by role</span><select value={roleFilter} onChange={(event) => setRoleFilter(event.target.value)}><option>All</option>{USER_ROLES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</select></label>
           </div>
-          <div className="users-table-wrap">
-            <table className="users-table">
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Username</th>
-                  <th>Display Name</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Last login</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleUsers.map(u => (
-                  <tr key={u.id}>
-                    <td>{u.id}</td>
-                    <td>{u.username}</td>
-                    <td>{u.display_name}</td>
-                    <td>
-                      {(u.username === user?.username || (!isSuperAdmin && [SUPER_ADMIN_ROLE, SYSTEM_ADMIN_ROLE].includes(u.role))) ? <span className="role-badge">{u.role}</span> : <select
-                        value={u.role}
-                        onChange={(e) => setPendingAction({ type: 'role', user: u, role: e.target.value })}
-                        className="role-badge role-select"
-                      >
-                        {manageableRoles.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                      </select>}
-                    </td>
-                    <td><span className={u.is_active ? 'account-status account-status--active' : 'account-status'}>{u.is_active ? 'Active' : 'Inactive'}</span></td>
-                    <td>{u.last_login ? new Date(u.last_login).toLocaleString() : 'Never'}</td>
-                    <td className="action-buttons">
-                      <button type="button" className="btn-secondary" title="Reset Password" onClick={() => openPasswordReset(u)}>
-                        <KeyRound size={14} /> Reset
-                      </button>
-                      {u.username !== user?.username && <button type="button" className="btn-secondary" title={u.is_active ? 'Deactivate user' : 'Activate user'} onClick={() => setPendingAction({ type: 'status', user: u, isActive: !u.is_active })}>{u.is_active ? <PowerOff size={14} /> : <Power size={14} />}{u.is_active ? 'Deactivate' : 'Activate'}</button>}
-                      {(['Pathologist', 'Laboratory Manager'].includes(u.role) || (isSuperAdmin && u.role === SYSTEM_ADMIN_ROLE)) && <button type="button" className="btn-secondary" title="Manage AI access" onClick={() => openAiAccess(u.id)}><Sparkles size={14} /> AI access</button>}
-                      {(isSuperAdmin || ![SUPER_ADMIN_ROLE, SYSTEM_ADMIN_ROLE].includes(u.role)) && <button type="button" className="btn-delete" title="Delete User" disabled={u.username === user?.username} onClick={() => setPendingAction({ type: 'delete', user: u })}>
-                        <ShieldAlert size={14} /> Delete
-                      </button>}
-                    </td>
-                  </tr>
-                ))}
-                {visibleUsers.length === 0 && (
-                  <tr>
-                    <td className="empty-users" colSpan="7">No users match the current filters.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <ReferenceTable showOpen={false} rows={visibleUsers.slice(page * pageSize, page * pageSize + pageSize)} rowKey={(item) => item.id} empty="No users match the current filters." columns={[
+            { key: 'id', label: 'ID', render: (item) => item.id },
+            { key: 'username', label: 'Username', render: (item) => item.username },
+            { key: 'name', label: 'Display Name', render: (item) => item.display_name },
+            { key: 'role', label: 'Role', fit: true, render: (item) => (item.username === user?.username || (!isSuperAdmin && [SUPER_ADMIN_ROLE, SYSTEM_ADMIN_ROLE].includes(item.role))) ? item.role : <select value={item.role} onChange={(event) => setPendingAction({ type: 'role', user: item, role: event.target.value })} className="role-badge role-select">{manageableRoles.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select> },
+            { key: 'status', label: 'Status', render: (item) => item.is_active ? 'Active' : 'Inactive' },
+            { key: 'login', label: 'Last login', render: (item) => item.last_login ? new Date(item.last_login).toLocaleString() : 'Never' },
+            { key: 'actions', label: 'Actions', fit: true, render: (item) => <span className="action-buttons"><button type="button" className="btn-secondary" onClick={() => openPasswordReset(item)}><KeyRound size={14} /> Reset</button>{item.username !== user?.username && <button type="button" className="btn-secondary" onClick={() => setPendingAction({ type: 'status', user: item, isActive: !item.is_active })}>{item.is_active ? 'Deactivate' : 'Activate'}</button>}{(['Pathologist', 'Laboratory Manager'].includes(item.role) || (isSuperAdmin && item.role === SYSTEM_ADMIN_ROLE)) && <button type="button" className="btn-secondary" onClick={() => openAiAccess(item.id)}>AI access</button>}{(isSuperAdmin || ![SUPER_ADMIN_ROLE, SYSTEM_ADMIN_ROLE].includes(item.role)) && <button type="button" className="btn-delete" disabled={item.username === user?.username} onClick={() => setPendingAction({ type: 'delete', user: item })}>Delete</button>}</span> },
+          ]} />
+          <Pagination page={page} pageSize={pageSize} total={visibleUsers.length} onPageChange={setPage} label="User pages" />
         </div>
       </div>
       {isAdministratorRole(user?.role) && <AISubscriptions selectedUserId={aiAccessUserId} onUserOpened={() => setAiAccessUserId(null)} />}
