@@ -3,6 +3,7 @@ import OpenSeadragon from 'openseadragon';
 import { Bookmark, Edit3, Eye, EyeOff, Expand, Maximize2, Minimize2, Minus, Plus, RefreshCw, RotateCcw, RotateCw, Trash2, PenTool, Download } from 'lucide-react';
 import '../SlideViewer/SlideViewer.css';
 import './WsiViewer.css';
+import { claheUsesTiles, dipService } from '../../services/dipService';
 import { API_BASE_URL as API } from '../../config';
 import Modal from '../Modal/Modal';
 import { viewerService } from '../../services/viewerService';
@@ -14,6 +15,7 @@ import { SYSTEM_ADMIN_ROLE, SUPER_ADMIN_ROLE } from '../../config/roles';
 import AiAnalysisPanel, { PANNUKE_CLASSES } from './AiAnalysisPanel';
 import ViewerToolbar from './ViewerToolbar';
 import ViewerDisplaySettings from './ViewerDisplaySettings';
+import DipProcessingPanel from './DipProcessingPanel';
 import ViewerBookmarksModal from './ViewerBookmarksModal';
 import ViewerShortcutsModal from './ViewerShortcutsModal';
 import ViewerTrail from './ViewerTrail';
@@ -36,16 +38,23 @@ const DISPLAY_PROFILES = {
 function annotationToRoi(annotation, fallbackLabel) {
   if (!annotation) return null;
   const type = annotation.annotation_type || annotation.type;
-  if (['rectangle', 'ellipse'].includes(type) && annotation.width > 0 && annotation.height > 0) {
-    return { x: annotation.x, y: annotation.y, width: annotation.width, height: annotation.height, label: annotation.label || fallbackLabel };
+  const x = Number(annotation.x);
+  const y = Number(annotation.y);
+  const width = Number(annotation.width);
+  const height = Number(annotation.height);
+  if (Number.isFinite(x) && Number.isFinite(y) && width > 0 && height > 0 && (!type || ['rectangle', 'ellipse'].includes(type))) {
+    return { x, y, width, height, label: annotation.label || fallbackLabel };
   }
-  if (!['freehand', 'polygon'].includes(type) || !Array.isArray(annotation.points) || annotation.points.length < 2) return null;
+  if (!Array.isArray(annotation.points) || annotation.points.length < 2) return null;
   const points = annotation.points.map((point) => Array.isArray(point) ? { x: point[0], y: point[1] } : point).filter((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y));
   if (points.length < 2) return null;
   const xs = points.map((point) => point.x);
   const ys = points.map((point) => point.y);
-  const x = Math.min(...xs); const y = Math.min(...ys); const width = Math.max(...xs) - x; const height = Math.max(...ys) - y;
-  return width > 0 && height > 0 ? { x, y, width, height, label: annotation.label || fallbackLabel } : null;
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const boxWidth = Math.max(...xs) - minX;
+  const boxHeight = Math.max(...ys) - minY;
+  return boxWidth > 0 && boxHeight > 0 ? { x: minX, y: minY, width: boxWidth, height: boxHeight, label: annotation.label || fallbackLabel } : null;
 }
 
 function normalizeDraftForMeasurement(geometry) {
@@ -128,6 +137,15 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   const [trailVisible, setTrailVisible] = useState(false);
   const [coverageBoxes, setCoverageBoxes] = useState([]);
   const [showAdjustments, setShowAdjustments] = useState(false);
+  const [showDip, setShowDip] = useState(false);
+  const [dipResult, setDipResult] = useState(null);
+  const [dipVisible, setDipVisible] = useState(true);
+  const [dipOpacity, setDipOpacity] = useState(0.65);
+  const [dipView, setDipView] = useState('overlay');
+  const [claheTiles, setClaheTiles] = useState([]);
+  const [claheOverview, setClaheOverview] = useState(true);
+  const [claheSplit, setClaheSplit] = useState(0.5);
+  const [claheNote, setClaheNote] = useState('');
   const [showViewpointsModal, setShowViewpointsModal] = useState(false);
   const [showShortcutsModal, setShowShortcutsModal] = useState(false);
   const [prefSaving, setPrefSaving] = useState(false);
@@ -149,6 +167,9 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   // ── HoVer-Net AI analysis state ───────────────────────────────────────────
   /** The active analysis record returned by the backend (contains nuclei array). */
   const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [camelyonHeatmapUrl, setCamelyonHeatmapUrl] = useState(null);
+  const [camelyonVisible, setCamelyonVisible] = useState(true);
+  const [camelyonOpacity, setCamelyonOpacity] = useState(0.65);
   const [qcAnalysis, setQcAnalysis] = useState(null);
   const [qcGeojson, setQcGeojson] = useState(null);
   const [qcHiddenClasses, setQcHiddenClasses] = useState(new Set());
@@ -176,6 +197,172 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   }, [slide.id]);
 
   useEffect(() => {
+    setAiAnalysis(null);
+    setCamelyonHeatmapUrl(null);
+    setCamelyonVisible(true);
+    setDipResult((current) => {
+      Object.values(current?.views || {}).forEach((url) => URL.revokeObjectURL(url));
+      return null;
+    });
+    setDipView('overlay');
+    setDipVisible(true);
+    setShowDip(false);
+    setClaheTiles((current) => {
+      current.forEach((tile) => URL.revokeObjectURL(tile.url));
+      return [];
+    });
+    setClaheOverview(true);
+    setClaheNote('');
+  }, [slide.id]);
+
+  useEffect(() => {
+    if (!viewerInstance || !viewerReady || dipResult?.algorithm !== 'clahe' || dipResult.mode !== 'whole_slide' || dipView === 'original' || !dipVisible) {
+      setClaheTiles((current) => {
+        current.forEach((tile) => URL.revokeObjectURL(tile.url));
+        return [];
+      });
+      return undefined;
+    }
+    const controller = new AbortController();
+    let timer = 0;
+    const refresh = async () => {
+      const item = viewerInstance.world.getItemAt(0);
+      const element = elementRef.current;
+      if (!item || !element) return;
+      const width = element.clientWidth;
+      const height = element.clientHeight;
+      const corners = [[0, 0], [width, 0], [0, height], [width, height]].map(([px, py]) => item.viewportToImageCoordinates(viewerInstance.viewport.pointFromPixel(new OpenSeadragon.Point(px, py), true)));
+      const minX = Math.max(0, Math.min(...corners.map((point) => point.x)));
+      const minY = Math.max(0, Math.min(...corners.map((point) => point.y)));
+      const maxX = Math.min(slide.width, Math.max(...corners.map((point) => point.x)));
+      const maxY = Math.min(slide.height, Math.max(...corners.map((point) => point.y)));
+      const visibleWidth = Math.max(1, maxX - minX);
+      const imagePerScreen = visibleWidth / Math.max(1, width);
+      const overviewDownsample = slide.width / Math.max(1, dipResult.processing?.width || slide.width);
+      if (!claheUsesTiles(imagePerScreen, overviewDownsample)) {
+        setClaheOverview(true);
+        setClaheNote('');
+        setClaheTiles((current) => {
+          current.forEach((tile) => URL.revokeObjectURL(tile.url));
+          return [];
+        });
+        return;
+      }
+      setClaheOverview(false);
+      let tileSize = Math.min(4096, Math.max(256, Math.round(imagePerScreen * 512)));
+      let columns = Math.ceil(visibleWidth / tileSize);
+      let rows = Math.ceil((maxY - minY) / tileSize);
+      while (columns * rows > 12 && tileSize < 8192) {
+        tileSize = Math.min(8192, tileSize * 2);
+        columns = Math.ceil(visibleWidth / tileSize);
+        rows = Math.ceil((maxY - minY) / tileSize);
+      }
+      const requests = [];
+      for (let top = Math.floor(minY / tileSize) * tileSize; top < maxY; top += tileSize) {
+        for (let left = Math.floor(minX / tileSize) * tileSize; left < maxX; left += tileSize) {
+          requests.push({
+            x: Math.max(0, Math.floor(left)),
+            y: Math.max(0, Math.floor(top)),
+            width: Math.min(tileSize, slide.width - Math.floor(left)),
+            height: Math.min(tileSize, slide.height - Math.floor(top)),
+          });
+        }
+      }
+      try {
+        const loaded = [];
+        for (let index = 0; index < requests.length; index += 3) {
+          const batch = requests.slice(index, index + 3);
+          const urls = await Promise.all(batch.map((tile) => dipService.claheTile(slide.id, {
+            ...tile,
+            clipLimit: dipResult.parameters.clip_limit,
+            tileGridSize: dipResult.parameters.tile_grid_size,
+          }, controller.signal)));
+          batch.forEach((tile, tileIndex) => loaded.push({ ...tile, url: urls[tileIndex] }));
+        }
+        if (controller.signal.aborted) {
+          loaded.forEach((tile) => URL.revokeObjectURL(tile.url));
+          return;
+        }
+        setClaheNote('');
+        setClaheTiles((current) => {
+          current.forEach((tile) => URL.revokeObjectURL(tile.url));
+          return loaded;
+        });
+      } catch (error) {
+        if (error.name === 'AbortError') return;
+        setClaheTiles((current) => {
+          current.forEach((tile) => URL.revokeObjectURL(tile.url));
+          return [];
+        });
+        setClaheNote('Enhanced detail is not available at this magnification. The original slide remains visible.');
+      }
+    };
+    const schedule = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(refresh, 150);
+    };
+    viewerInstance.addHandler('update-viewport', schedule);
+    schedule();
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+      viewerInstance.removeHandler('update-viewport', schedule);
+    };
+  }, [viewerInstance, viewerReady, dipResult, dipView, dipVisible, slide.id, slide.width, slide.height]);
+
+  useEffect(() => {
+    if (
+      !aiAnalysis?.id ||
+      aiAnalysis.feature_code !== 'CAMELYON_TUMOR_DETECTION'
+    ) {
+      setCamelyonHeatmapUrl(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let objectUrl = null;
+
+    async function loadHeatmap() {
+      try {
+        const response = await fetch(
+          `${API}/api/ai/analyses/${aiAnalysis.id}/overlay.png`,
+          {
+            credentials: 'include',
+            signal: controller.signal,
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const blob = await response.blob();
+
+        if (!blob.type.includes('image/png')) {
+          throw new Error('Expected PNG heatmap');
+        }
+
+        if (controller.signal.aborted) return;
+
+        objectUrl = URL.createObjectURL(blob);
+        setCamelyonHeatmapUrl(objectUrl);
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          onError?.(`Could not load CAMELYON heatmap: ${error.message}`);
+        }
+      }
+    }
+
+    setCamelyonHeatmapUrl(null);
+    loadHeatmap();
+
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [aiAnalysis?.id, aiAnalysis?.feature_code, onError]);
+
+  useEffect(() => {
     const controller = new AbortController();
     setQcGeojson(null);
     setQcSelectedRegion(null);
@@ -200,6 +387,7 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   /** AI operates on the bounding rectangle of the selected annotation shape. */
   const roiRect = (() => {
     return annotationToRoi(draft, 'Draft ROI')
+      || annotationToRoi(draftGeometry, 'Draft ROI')
       || annotationToRoi(editing, 'Editing ROI')
       || annotationToRoi(selectedAnnotation, `Annotation #${selectedAnnotation?.id}`);
   })();
@@ -1080,6 +1268,8 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
           flipV={flipV}
           showAdjustments={showAdjustments}
           onToggleAdjustments={() => setShowAdjustments((s) => !s)}
+          showDip={showDip}
+          onToggleDip={() => setShowDip((open) => !open)}
           brightness={brightness}
           contrast={contrast}
           gamma={gamma}
@@ -1108,6 +1298,28 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
           data-contrast={contrast}
         >
           <div className={`wsi-viewer ${drawMode ? 'drawing-mode' : ''}`} ref={elementRef} aria-label={`Whole-slide viewer for ${slide.label}`} />
+          {dipResult?.algorithm === 'clahe' && dipView === 'comparison' && dipVisible && (
+            <div
+              className="clahe-divider"
+              style={{ left: `${claheSplit * 100}%` }}
+              role="slider"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(claheSplit * 100)}
+              aria-label="Original and enhanced comparison divider"
+              onPointerDown={(event) => {
+                event.currentTarget.setPointerCapture(event.pointerId);
+                event.stopPropagation();
+              }}
+              onPointerMove={(event) => {
+                if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+                const bounds = event.currentTarget.parentElement.getBoundingClientRect();
+                const next = (event.clientX - bounds.left) / bounds.width;
+                setClaheSplit(Math.min(0.95, Math.max(0.05, next)));
+              }}
+            />
+          )}
+          {claheNote && <p className="clahe-note">{claheNote}</p>}
 
           <ViewerTrail
             visible={trailVisible}
@@ -1138,6 +1350,29 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
               onClose={() => setShowAdjustments(false)}
             />
           )}
+          {showDip && (
+            <DipProcessingPanel
+              slideId={slide.id}
+              roiRect={roiRect}
+              visible={dipVisible}
+              opacity={dipOpacity}
+              view={dipView}
+              onViewChange={setDipView}
+              onVisibleChange={setDipVisible}
+              onOpacityChange={setDipOpacity}
+              onResult={(next) => setDipResult((current) => {
+                Object.values(current?.views || {}).forEach((url) => {
+                  if (!Object.values(next.views || {}).includes(url)) URL.revokeObjectURL(url);
+                });
+                return next;
+              })}
+              onClear={() => setDipResult((current) => {
+                Object.values(current?.views || {}).forEach((url) => URL.revokeObjectURL(url));
+                return null;
+              })}
+              onClose={() => setShowDip(false)}
+            />
+          )}
 
           <svg ref={svgOverlayRef} className={`annotation-svg-overlay ${drawMode ? 'drawing-active' : ''}`}>
             <defs>
@@ -1150,6 +1385,106 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
                 </marker>
               ))}
             </defs>
+            {aiAnalysis?.feature_code === 'CAMELYON_TUMOR_DETECTION' &&
+              camelyonHeatmapUrl &&
+              camelyonVisible &&
+              viewerReady &&
+              aiAnalysis.roi &&
+              (() => {
+                const roi = aiAnalysis.roi;
+
+                const x = roi.x ?? roi.roi_x;
+                const y = roi.y ?? roi.roi_y;
+                const width = roi.width ?? roi.roi_width;
+                const height = roi.height ?? roi.roi_height;
+
+                if (![x, y, width, height].every(Number.isFinite)) {
+                  return null;
+                }
+
+                const topLeft = imageToViewport(x, y);
+                const topRight = imageToViewport(x + width, y);
+                const bottomLeft = imageToViewport(x, y + height);
+                if (![topLeft, topRight, bottomLeft].every((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))) {
+                  return null;
+                }
+                const edgeX = topRight.x - topLeft.x;
+                const edgeY = topRight.y - topLeft.y;
+                const downX = bottomLeft.x - topLeft.x;
+                const downY = bottomLeft.y - topLeft.y;
+                const screenWidth = Math.hypot(edgeX, edgeY);
+                const screenHeight = Math.hypot(downX, downY);
+                const angle = Math.atan2(edgeY, edgeX) * 180 / Math.PI;
+                const flippedVertically = (edgeX * downY) - (edgeY * downX) < 0;
+
+                return (
+                  <image
+                    href={camelyonHeatmapUrl}
+                    x="0"
+                    y="0"
+                    width={screenWidth}
+                    height={screenHeight}
+                    opacity={camelyonOpacity}
+                    preserveAspectRatio="none"
+                    pointerEvents="none"
+                    transform={`translate(${topLeft.x} ${topLeft.y}) rotate(${angle})${flippedVertically ? ' scale(1 -1)' : ''}`}
+                  />
+                );
+              })()}
+            {dipView !== 'original' && dipVisible && viewerReady && dipResult?.roi && (() => {
+              const useTiles = dipResult.algorithm === 'clahe' && dipResult.mode === 'whole_slide' && !claheOverview;
+              const singleHref = dipView === 'comparison'
+                ? (dipResult.views?.enhanced || dipResult.overlayUrl)
+                : (dipResult.views?.[dipView] || dipResult.overlayUrl);
+              if (!useTiles && !singleHref) return null;
+              const pieces = useTiles ? claheTiles : [{ x: Number(dipResult.roi.x), y: Number(dipResult.roi.y), width: Number(dipResult.roi.width), height: Number(dipResult.roi.height), url: singleHref }];
+              const images = pieces.map((piece) => {
+                const x = Number(piece.x);
+                const y = Number(piece.y);
+                const width = Number(piece.width);
+                const height = Number(piece.height);
+                if (![x, y, width, height].every(Number.isFinite) || !piece.url) return null;
+                const topLeft = imageToViewport(x, y);
+                const topRight = imageToViewport(x + width, y);
+                const bottomLeft = imageToViewport(x, y + height);
+                if (![topLeft, topRight, bottomLeft].every((point) => Number.isFinite(point?.x) && Number.isFinite(point?.y))) return null;
+                const edgeX = topRight.x - topLeft.x;
+                const edgeY = topRight.y - topLeft.y;
+                const downX = bottomLeft.x - topLeft.x;
+                const downY = bottomLeft.y - topLeft.y;
+                const angle = Math.atan2(edgeY, edgeX) * 180 / Math.PI;
+                const flippedVertically = (edgeX * downY) - (edgeY * downX) < 0;
+                return (
+                  <image
+                    key={`${x}-${y}-${width}-${height}`}
+                    href={piece.url}
+                    x="0"
+                    y="0"
+                    width={Math.hypot(edgeX, edgeY)}
+                    height={Math.hypot(downX, downY)}
+                    opacity={dipOpacity}
+                    preserveAspectRatio="none"
+                    pointerEvents="none"
+                    transform={`translate(${topLeft.x} ${topLeft.y}) rotate(${angle})${flippedVertically ? ' scale(1 -1)' : ''}`}
+                  />
+                );
+              });
+              if (dipResult.algorithm === 'clahe' && dipView === 'comparison') {
+                return (
+                  <g clipPath="url(#clahe-split)">
+                    {images}
+                  </g>
+                );
+              }
+              return images;
+            })()}
+            {dipResult?.algorithm === 'clahe' && dipView === 'comparison' && dipVisible && (
+              <defs>
+                <clipPath id="clahe-split" clipPathUnits="userSpaceOnUse">
+                  <rect x={(svgOverlayRef.current?.clientWidth || 0) * claheSplit} y="0" width="100000" height="100000" />
+                </clipPath>
+              </defs>
+            )}
             <GrandQCOverlay
               geojson={qcGeojson}
               imageToViewport={imageToViewport}
@@ -1394,6 +1729,32 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
           onPanToRoi={panToRoi}
           onError={onError}
         />}
+        {inspectorTab === 'ai' && aiAnalysis?.feature_code === 'CAMELYON_TUMOR_DETECTION' && (
+          <section className="ai-class-section camelyon-controls">
+            <h4>CAMELYON Heatmap</h4>
+
+            <label className="camelyon-control-row">
+              <input
+                type="checkbox"
+                checked={camelyonVisible}
+                onChange={(event) => setCamelyonVisible(event.target.checked)}
+              />
+              <span>Show heatmap overlay</span>
+            </label>
+
+            <label className="camelyon-opacity-control">
+              <span>Heatmap opacity: {Math.round(camelyonOpacity * 100)}%</span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value={camelyonOpacity}
+                onChange={(event) => setCamelyonOpacity(Number(event.target.value))}
+              />
+            </label>
+          </section>
+        )}
         {draft && <AnnotationForm title="New annotation" values={draft} calibration={calibration} onSubmit={saveNew} onCancel={() => setDraft(null)} saving={saving} />}
         {editing && <AnnotationForm title="Edit annotation" values={editing} calibration={calibration} onSubmit={saveEdit} onCancel={() => setEditing(null)} saving={saving} />}
         {annotationsLoading ? <p className="annotation-empty">Loading annotations…</p> : !annotations.length ?
