@@ -49,7 +49,7 @@
 }
 
 .annotation-shape--selected {
-  filter: drop-shadow(0 0 5px #3b82f6);
+  filter: none;
 }
 
 .annotation-item--selected {
@@ -91,7 +91,6 @@
   background: var(--color-surface);
   border: var(--border-width) solid var(--color-primary);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-md);
   pointer-events: none;
 }
 
@@ -144,7 +143,6 @@
   background: var(--color-surface-elevated);
   border: var(--border-width) solid var(--color-primary);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-sm);
   pointer-events: none;
 }
 
@@ -1297,7 +1295,6 @@
 .annotation-shape--selected polygon {
   stroke-width: 3.5px !important;
   stroke-dasharray: 4 2;
-  filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.6));
 }
 
 .annotation-item--selected {
@@ -1333,8 +1330,8 @@
 }
 
 .findings-tab--active {
-  color: #67b7ff;
-  border-bottom-color: #67b7ff;
+  color: #ca3d33;
+  border-bottom-color: #ca3d33;
   font-weight: 700;
 }
 
@@ -1491,6 +1488,50 @@
   margin: 0;
   font-size: .72rem;
   line-height: 1.5;
+}
+
+.wsi-annotation-workspace.is-fullscreen,
+.wsi-annotation-workspace:fullscreen {
+  background: #090d0f;
+  color: #e8e8e8;
+}
+
+.wsi-annotation-workspace.is-fullscreen .advanced-viewer-toolbar,
+.wsi-annotation-workspace:fullscreen .advanced-viewer-toolbar,
+.wsi-annotation-workspace.is-fullscreen .annotation-panel,
+.wsi-annotation-workspace:fullscreen .annotation-panel,
+.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading,
+.wsi-annotation-workspace:fullscreen .annotation-panel-heading,
+.wsi-annotation-workspace.is-fullscreen .findings-tabs,
+.wsi-annotation-workspace:fullscreen .findings-tabs,
+.wsi-annotation-workspace.is-fullscreen .selected-findings,
+.wsi-annotation-workspace:fullscreen .selected-findings {
+  color: #e8e8e8;
+  background: #141414;
+  border-color: #2a2a2a;
+}
+
+.wsi-annotation-workspace.is-fullscreen .btn-toolbar,
+.wsi-annotation-workspace:fullscreen .btn-toolbar,
+.wsi-annotation-workspace.is-fullscreen .findings-tab,
+.wsi-annotation-workspace:fullscreen .findings-tab {
+  color: #d0d0d0;
+}
+
+.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading h3,
+.wsi-annotation-workspace:fullscreen .annotation-panel-heading h3,
+.wsi-annotation-workspace.is-fullscreen .selected-findings strong,
+.wsi-annotation-workspace:fullscreen .selected-findings strong,
+.wsi-annotation-workspace.is-fullscreen .selected-findings p,
+.wsi-annotation-workspace:fullscreen .selected-findings p {
+  color: #f2f2f2;
+}
+
+.wsi-annotation-workspace.is-fullscreen .annotation-empty,
+.wsi-annotation-workspace:fullscreen .annotation-empty,
+.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading span,
+.wsi-annotation-workspace:fullscreen .annotation-panel-heading span {
+  color: #9a9a9a;
 }
 
 /* GrandQC styles are isolated in GrandQCOverlay.css. */

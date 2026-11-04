@@ -1,18 +1,18 @@
 .dip-panel {
   position: absolute;
   top: 48px;
-  left: var(--space-4);
-  width: 290px;
+  left: 16px;
+  width: 340px;
+  box-sizing: border-box;
   max-width: calc(100% - 32px);
   max-height: calc(100% - 64px);
   overflow: auto;
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
+  background: #1c1c1c;
+  border: 1px solid #333;
+  border-radius: 10px;
   z-index: 25;
   font-family: var(--font-primary);
-  color: var(--text-main);
+  color: #f2f2f2;
 }
 
 .dip-panel__header,
@@ -59,30 +59,55 @@
   line-height: 1.45;
 }
 
-.dip-panel__modes {
+.dip-panel__choices {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  border: 0;
+  gap: 6px;
 }
 
-.dip-panel__modes legend {
-  margin-bottom: var(--space-1);
-  font-size: var(--font-size-xs);
-  color: var(--text-muted);
+.dip-panel__choices > span {
+  color: #b5b5b5;
+  font-size: 12px;
+  font-weight: 600;
 }
 
-.dip-panel__modes label {
+.dip-panel__choices label,
+.dip-panel__check {
   display: flex;
+  flex-direction: row;
   align-items: center;
-  gap: var(--space-2);
-  font-size: var(--font-size-xs);
+  justify-content: flex-start !important;
+  gap: 10px;
+  width: 100%;
+  min-height: 36px;
+  margin: 0;
+  padding: 8px 10px;
+  color: #f2f2f2;
+  background: #141414;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
 }
 
-.dip-panel__modes:disabled {
+.dip-panel__choices label:has(input:checked) {
+  border-color: #ca3d33;
+  background: #3a2424;
+}
+
+.dip-panel__choices[aria-disabled="true"] {
   opacity: 0.55;
+}
+
+.dip-panel__choices input,
+.dip-panel__check input {
+  margin: 0;
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  accent-color: #ca3d33;
 }
 
 .dip-panel__field {
@@ -96,11 +121,35 @@
 .dip-panel__field select,
 .dip-panel__field input[type="range"] {
   width: 100%;
+  min-height: 34px;
+  color: #f2f2f2;
+  background: #141414;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  accent-color: #ca3d33;
+}
+
+.dip-panel__field select {
+  padding: 0 8px;
 }
 
 .dip-panel__run,
 .dip-panel__clear {
-  align-self: flex-start;
+  width: 100%;
+  min-height: 38px;
+  border-radius: 8px;
+}
+
+.dip-panel .btn-primary {
+  color: #fff;
+  background: #ca3d33;
+  border-color: #ca3d33;
+}
+
+.dip-panel .btn-primary:hover:not(:disabled) {
+  color: #fff;
+  background: #a8322b;
+  border-color: #a8322b;
 }
 
 .dip-panel__error {
@@ -111,8 +160,12 @@
 .dip-panel__stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: var(--space-2);
+  gap: 10px 12px;
   margin: 0;
+  padding: 10px;
+  background: #141414;
+  border: 1px solid #333;
+  border-radius: 8px;
 }
 
 .dip-panel__stats div {
@@ -128,20 +181,20 @@
 
 .dip-panel__stats dd {
   margin: 0;
-  font-size: var(--font-size-sm);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .dip-panel__check {
-  gap: var(--space-2);
-  font-size: var(--font-size-xs);
+  gap: 10px;
+  font-size: 13px;
 }
 
 .dip-panel__clear {
   background: transparent;
-  border: 1px solid var(--border-subtle);
-  color: var(--text-main);
-  border-radius: var(--radius-sm);
-  padding: 6px 10px;
+  border: 1px solid #444;
+  color: #f2f2f2;
   cursor: pointer;
 }
 

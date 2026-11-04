@@ -13,7 +13,6 @@
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
   width: min(520px, calc(100vw - 32px));
   max-height: 80vh;
   display: flex;

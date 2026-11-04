@@ -101,11 +101,11 @@ export default function DipProcessingPanel({
           : technique === 'clahe'
             ? 'Research use only. CLAHE raises local contrast on the lightness channel. It is not a diagnostic improvement.'
             : 'Research use only. This separates darker tissue from background by intensity. It is not tumor or cell detection.'}</p>
-        <fieldset className="dip-panel__modes">
-          <legend>Processing mode</legend>
-          <label><input type="radio" name="dip-mode" value="roi" checked={mode === 'roi'} onChange={() => setMode('roi')} /> Selected ROI</label>
-          <label><input type="radio" name="dip-mode" value="whole_slide" checked={mode === 'whole_slide'} onChange={() => setMode('whole_slide')} /> Whole Slide</label>
-        </fieldset>
+        <div className="dip-panel__choices" role="group" aria-label="Processing mode">
+          <span>Processing mode</span>
+          <label><input type="checkbox" name="dip-mode" value="roi" checked={mode === 'roi'} onChange={() => setMode('roi')} /> Selected ROI</label>
+          <label><input type="checkbox" name="dip-mode" value="whole_slide" checked={mode === 'whole_slide'} onChange={() => setMode('whole_slide')} /> Whole slide</label>
+        </div>
         {mode === 'whole_slide' ? (
           <p className="dip-panel__roi">Processes the whole-slide tissue footprint at a reduced resolution.</p>
         ) : roiMessage ? (
@@ -183,27 +183,27 @@ export default function DipProcessingPanel({
           </dl>
         )}
         {result?.algorithm === 'otsu' && result?.accuracy_note && <p className="dip-panel__note">{result.accuracy_note}</p>}
-        <fieldset className="dip-panel__modes" disabled={!result}>
-          <legend>Result visualization</legend>
+        <div className="dip-panel__choices" role="group" aria-label="Result visualization" aria-disabled={!result}>
+          <span>Result view</span>
           {technique === 'clahe' ? (
             <>
-              <label><input type="radio" name="dip-view" value="enhanced" checked={view === 'enhanced'} onChange={() => onViewChange('enhanced')} /> Enhanced Image</label>
-              <label><input type="radio" name="dip-view" value="original" checked={view === 'original'} onChange={() => onViewChange('original')} /> Original Image</label>
-              <label><input type="radio" name="dip-view" value="comparison" checked={view === 'comparison'} onChange={() => onViewChange('comparison')} /> Side-by-Side Comparison</label>
+              <label><input type="checkbox" name="dip-view" value="enhanced" checked={view === 'enhanced'} onChange={() => onViewChange('enhanced')} /> Enhanced Image</label>
+              <label><input type="checkbox" name="dip-view" value="original" checked={view === 'original'} onChange={() => onViewChange('original')} /> Original Image</label>
+              <label><input type="checkbox" name="dip-view" value="comparison" checked={view === 'comparison'} onChange={() => onViewChange('comparison')} /> Side-by-Side Comparison</label>
             </>
           ) : technique === 'canny' ? (
             <>
-              <label><input type="radio" name="dip-view" value="overlay" checked={view === 'overlay'} onChange={() => onViewChange('overlay')} /> Edge Overlay</label>
-              <label><input type="radio" name="dip-view" value="mask" checked={view === 'mask'} onChange={() => onViewChange('mask')} /> Binary Edge Map</label>
+              <label><input type="checkbox" name="dip-view" value="overlay" checked={view === 'overlay'} onChange={() => onViewChange('overlay')} /> Edge Overlay</label>
+              <label><input type="checkbox" name="dip-view" value="mask" checked={view === 'mask'} onChange={() => onViewChange('mask')} /> Binary Edge Map</label>
             </>
           ) : (
             <>
-              <label><input type="radio" name="dip-view" value="overlay" checked={view === 'overlay'} onChange={() => onViewChange('overlay')} /> Tissue Overlay</label>
-              <label><input type="radio" name="dip-view" value="mask" checked={view === 'mask'} onChange={() => onViewChange('mask')} /> Binary Mask</label>
-              <label><input type="radio" name="dip-view" value="contours" checked={view === 'contours'} onChange={() => onViewChange('contours')} /> Tissue Contours</label>
+              <label><input type="checkbox" name="dip-view" value="overlay" checked={view === 'overlay'} onChange={() => onViewChange('overlay')} /> Tissue Overlay</label>
+              <label><input type="checkbox" name="dip-view" value="mask" checked={view === 'mask'} onChange={() => onViewChange('mask')} /> Binary Mask</label>
+              <label><input type="checkbox" name="dip-view" value="contours" checked={view === 'contours'} onChange={() => onViewChange('contours')} /> Tissue Contours</label>
             </>
           )}
-        </fieldset>
+        </div>
         <label className="dip-panel__check">
           <input type="checkbox" checked={visible} onChange={(event) => onVisibleChange(event.target.checked)} />
           <span>Show result</span>

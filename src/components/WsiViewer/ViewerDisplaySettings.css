@@ -6,7 +6,6 @@
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
   z-index: 25;
   font-family: var(--font-primary);
   display: flex;

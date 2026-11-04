@@ -95,14 +95,12 @@
 .login-panel input:focus {
     border-color: #2d2d2d;
     outline: none;
-    box-shadow: 0 0 0 3px rgba(45, 45, 45, .12);
 }
 
 .login-panel input:-webkit-autofill,
 .login-panel input:-webkit-autofill:hover,
 .login-panel input:-webkit-autofill:focus {
     -webkit-text-fill-color: #171717;
-    -webkit-box-shadow: 0 0 0 1000px #fff inset;
     caret-color: #171717;
     transition: background-color 9999s ease-out;
 }

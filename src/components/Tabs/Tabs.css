@@ -33,8 +33,8 @@
 
 .app-tabs__tab--active,
 .app-tabs__tab--active:hover:not(:disabled) {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
+  color: #ca3d33;
+  border-bottom-color: #ca3d33;
   background: transparent;
 }
 

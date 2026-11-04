@@ -352,7 +352,6 @@
     background: var(--color-surface);
     border: 1px solid var(--color-border);
     border-radius: var(--radius-sm);
-    box-shadow: 0 8px 20px rgb(15 35 59 / 14%);
 }
 
 .case-library__action-menu a,
@@ -420,7 +419,6 @@
 .case-library__card:hover,
 .case-library__card--selected {
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 1px var(--color-primary);
 }
 
 .case-library__table-wrap .case-library__card {
@@ -847,7 +845,6 @@
 .case-library__action-menu {
     background: #fff;
     border-color: #d8d8d8;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, .16);
 }
 
 .case-library__action-menu a,

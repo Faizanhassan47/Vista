@@ -40,7 +40,6 @@
   max-width: calc(100% - 16px);
   border: 1px solid #d8d8d8;
   border-radius: 8px;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, .16);
 }
 
 .advanced-viewer-toolbar--annotation-open {
@@ -119,6 +118,17 @@
 
 .annotation-toolbar-menu { position: relative; }
 
+.annotation-toolbar-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.annotation-toolbar-menu__arrow {
+  margin-left: 2px;
+  flex: 0 0 auto;
+}
+
 .annotation-toolbar-menu__popup {
   position: absolute;
   top: calc(100% + 6px);
@@ -130,7 +140,6 @@
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  box-shadow: 0 8px 20px rgba(16, 47, 77, .14);
 }
 
 .annotation-toolbar-menu__popup button {

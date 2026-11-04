@@ -434,8 +434,8 @@ export default function AiAnalysisPanel({
   }, [activeJob, stopPolling]);
 
   // ── Run AI analysis ───────────────────────────────────────────────────────
-  const runAnalysis = useCallback(async (autoTissue = false) => {
-    if (running || !['HOVERNET', 'MITOTIC_DETECTION', CAMELYON_FEATURE_CODE].includes(selectedFeatureCode) ||
+  const runAnalysis = useCallback(async (autoTissue = false, featureCode = selectedFeatureCode) => {
+    if (running || !['HOVERNET', 'MITOTIC_DETECTION', CAMELYON_FEATURE_CODE].includes(featureCode) ||
         !(entitlements?.features || []).some((feature) =>
           feature.feature_code === featureCode &&
           feature.is_entitled && feature.is_active &&
@@ -462,7 +462,7 @@ export default function AiAnalysisPanel({
       abortRef.current = null;
       return;
     }
-    if (selectedFeatureCode === CAMELYON_FEATURE_CODE && !autoTissue) {
+    if (featureCode === CAMELYON_FEATURE_CODE && !autoTissue) {
       if (!roiRect) {
         onError?.('CAMELYON requires a manually selected ROI.');
         setRunning(false);
@@ -497,7 +497,7 @@ export default function AiAnalysisPanel({
         return;
       }
     }
-    const payload = selectedFeatureCode === CAMELYON_FEATURE_CODE
+    const payload = featureCode === CAMELYON_FEATURE_CODE
       ? (autoTissue
         ? {
             feature_code: CAMELYON_FEATURE_CODE,
@@ -516,7 +516,7 @@ export default function AiAnalysisPanel({
             run_in_background: true,
           })
       : autoTissue
-        ? { feature_code: selectedFeatureCode, auto_tissue: true }
+        ? { feature_code: featureCode, auto_tissue: true }
         : roiRect
         ? {
             feature_code: featureCode,
@@ -1050,7 +1050,7 @@ export default function AiAnalysisPanel({
                 Auto-Detect &amp; Analyze
               </button>}
               {!isGrandQcSelected && retryRequest && (
-                <button type="button" className="ai-action-btn ai-action-btn--secondary" onClick={() => runAnalysis(retryRequest.autoTissue)}>
+                <button type="button" className="ai-action-btn ai-action-btn--secondary" onClick={() => runAnalysis(retryRequest.autoTissue, retryRequest.featureCode)}>
                   Retry last analysis
                 </button>
               )}
@@ -1304,10 +1304,10 @@ export default function AiAnalysisPanel({
                 {analyses.map((a) => (
                   <option key={a.id} value={a.id}>
                     {isCamelyonAnalysis(a)
-                      ? `${a.patch_count ?? a.summary?.patch_count ?? '?'} patches · CAMELYON${(a.analysis_mode ?? a.summary?.analysis_mode) === 'whole_slide' ? ' · whole slide' : ''}`
+                      ? `Camelyon · ${a.patch_count ?? a.summary?.patch_count ?? '?'} patches${(a.analysis_mode ?? a.summary?.analysis_mode) === 'whole_slide' ? ' · whole slide' : ''}`
                       : isKongNetAnalysis(a)
-                        ? `${a.candidate_count ?? a.total_nuclei ?? '?'} candidates`
-                        : `${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
+                        ? `KongNet · ${a.candidate_count ?? a.total_nuclei ?? '?'} candidates`
+                        : `${a.model_name || 'HoVer-Net'} · ${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
                   </option>
                 ))}
               </select>
