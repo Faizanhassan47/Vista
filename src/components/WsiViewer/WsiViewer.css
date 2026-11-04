@@ -1493,46 +1493,64 @@
   line-height: 1.5;
 }
 
-.wsi-annotation-workspace.is-fullscreen,
-.wsi-annotation-workspace:fullscreen {
-  background: #090d0f;
-  color: #e8e8e8;
+/* GrandQC styles are isolated in GrandQCOverlay.css. */
+
+.camelyon-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.wsi-annotation-workspace.is-fullscreen .advanced-viewer-toolbar,
-.wsi-annotation-workspace:fullscreen .advanced-viewer-toolbar,
-.wsi-annotation-workspace.is-fullscreen .annotation-panel,
-.wsi-annotation-workspace:fullscreen .annotation-panel,
-.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading,
-.wsi-annotation-workspace:fullscreen .annotation-panel-heading,
-.wsi-annotation-workspace.is-fullscreen .findings-tabs,
-.wsi-annotation-workspace:fullscreen .findings-tabs,
-.wsi-annotation-workspace.is-fullscreen .selected-findings,
-.wsi-annotation-workspace:fullscreen .selected-findings {
-  color: #e8e8e8;
-  background: #141414;
-  border-color: #2a2a2a;
+.camelyon-control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.wsi-annotation-workspace.is-fullscreen .btn-toolbar,
-.wsi-annotation-workspace:fullscreen .btn-toolbar,
-.wsi-annotation-workspace.is-fullscreen .findings-tab,
-.wsi-annotation-workspace:fullscreen .findings-tab {
-  color: #d0d0d0;
+.camelyon-control-row input {
+  flex: 0 0 auto;
 }
 
-.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading h3,
-.wsi-annotation-workspace:fullscreen .annotation-panel-heading h3,
-.wsi-annotation-workspace.is-fullscreen .selected-findings strong,
-.wsi-annotation-workspace:fullscreen .selected-findings strong,
-.wsi-annotation-workspace.is-fullscreen .selected-findings p,
-.wsi-annotation-workspace:fullscreen .selected-findings p {
-  color: #f2f2f2;
+.camelyon-opacity-control {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.wsi-annotation-workspace.is-fullscreen .annotation-empty,
-.wsi-annotation-workspace:fullscreen .annotation-empty,
-.wsi-annotation-workspace.is-fullscreen .annotation-panel-heading span,
-.wsi-annotation-workspace:fullscreen .annotation-panel-heading span {
-  color: #9a9a9a;
+.camelyon-opacity-control input {
+  width: 100%;
+}
+
+.clahe-divider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 30;
+  width: 14px;
+  margin-left: -7px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.clahe-divider::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 6px;
+  width: 2px;
+  background: var(--accent, #128a78);
+}
+
+.clahe-note {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  z-index: 30;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: var(--font-size-xs);
 }

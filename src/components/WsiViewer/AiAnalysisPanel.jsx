@@ -19,8 +19,11 @@ import {
 } from 'lucide-react';
 import Modal from '../Modal/Modal';
 import { viewerService } from '../../services/viewerService';
+import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 import { aiSubscriptionService } from '../../services/aiSubscriptionService';
+import { grandqcService } from '../../services/grandqcService';
+import { qcClassColor } from './GrandQCOverlay';
 import './AiAnalysisPanel.css';
 
 function formatDuration(sec) {
@@ -33,6 +36,21 @@ function formatDuration(sec) {
 
 function isKongNetAnalysis(analysis) {
   return analysis?.feature_code === 'MITOTIC_DETECTION' || /kongnet/i.test(String(analysis?.model_name ?? ''));
+}
+
+const CAMELYON_FEATURE_CODE = 'CAMELYON_TUMOR_DETECTION';
+const CAMELYON_PATCH_SIZE = 224;
+const CAMELYON_MAX_ROI = 4480;
+
+function isCamelyonAnalysis(analysis) {
+  return analysis?.feature_code === CAMELYON_FEATURE_CODE
+    || analysis?.summary?.feature_code === CAMELYON_FEATURE_CODE
+    || /pathology_tumor_detection/i.test(String(analysis?.model_name ?? ''));
+}
+
+function calcCamelyonPatches(width, height) {
+  return Math.floor(width / CAMELYON_PATCH_SIZE)
+    * Math.floor(height / CAMELYON_PATCH_SIZE);
 }
 
 function calcKongnetTiles(w, h, sourceMpp = 0.25) {
@@ -221,11 +239,24 @@ export default function AiAnalysisPanel({
   onSelectMitoticCandidate,
   selectedMitoticCandidate,
   sourceMpp,
+  onQcAnalysisChange,
+  onQcFeatureActiveChange,
+  qcClasses = [],
+  qcVisible = true,
+  onToggleQcVisible,
+  qcHiddenClasses = new Set(),
+  onToggleQcClass,
 }) {
   const [open, setOpen] = useState(true);
   const [entitlements, setEntitlements] = useState(null);
   const [selectedFeatureCode, setSelectedFeatureCode] = useState('');
   const [running, setRunning] = useState(false);
+  const [qcJob, setQcJob] = useState(null);
+  const [qcResult, setQcResult] = useState(null);
+  const [qcHistory, setQcHistory] = useState([]);
+  const qcLoadSeqRef = useRef(0);
+  const [qcError, setQcError] = useState('');
+  const qcPollRef = useRef(null);
   const [activeJob, setActiveJob] = useState(null);
   const [cancelling, setCancelling] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -261,6 +292,7 @@ export default function AiAnalysisPanel({
   useEffect(() => {
     return () => {
       stopPolling();
+      if (qcPollRef.current) clearInterval(qcPollRef.current);
       if (abortRef.current) abortRef.current.abort();
     };
   }, [stopPolling]);
@@ -280,6 +312,34 @@ export default function AiAnalysisPanel({
     return () => controller.abort();
   }, []);
 
+  const showSavedQc = useCallback(async (id, signal) => {
+    const sequence = ++qcLoadSeqRef.current;
+    try {
+      const data = await grandqcService.detail(id, signal);
+      if (sequence !== qcLoadSeqRef.current || signal?.aborted) return;
+      setQcResult(data);
+      setQcError('');
+      onQcAnalysisChange?.(data);
+    } catch (error) {
+      if (error.name !== 'AbortError' && sequence === qcLoadSeqRef.current) {
+        setQcError(`Could not load saved GrandQC analysis: ${error.message}`);
+      }
+    }
+  }, [onQcAnalysisChange]);
+
+  const loadQcHistory = useCallback(async (signal) => {
+    try {
+      const response = await grandqcService.list(slide.id, signal);
+      const records = Array.isArray(response) ? response : response?.analyses || response?.items || [];
+      if (signal?.aborted) return;
+      const complete = records.filter((row) => String(row.status || '').toLowerCase() === 'completed');
+      setQcHistory(complete);
+      if (complete[0]?.id) await showSavedQc(complete[0].id, signal);
+    } catch (error) {
+      if (error.name !== 'AbortError') setQcError(`Could not load GrandQC history: ${error.message}`);
+    }
+  }, [slide.id, showSavedQc]);
+
   // ── Load analysis history on mount / slide change ───────────────────────
   const loadHistory = useCallback(async () => {
     try {
@@ -292,6 +352,14 @@ export default function AiAnalysisPanel({
 
   useEffect(() => {
     stopPolling();
+    if (qcPollRef.current) clearInterval(qcPollRef.current);
+    qcPollRef.current = null;
+    setQcJob(null);
+    setQcResult(null);
+    setQcHistory([]);
+    qcLoadSeqRef.current += 1;
+    onQcAnalysisChange?.(null);
+    setQcError('');
     if (abortRef.current) abortRef.current.abort();
     setRunning(false);
     setActiveJob(null);
@@ -300,7 +368,10 @@ export default function AiAnalysisPanel({
     setDetail(null);
     setSelectedNucleus(null);
     loadHistory();
-  }, [slide.id, stopPolling, loadHistory]);
+    const qcController = new AbortController();
+    loadQcHistory(qcController.signal);
+    return () => qcController.abort();
+  }, [slide.id, stopPolling, loadHistory, loadQcHistory]);
 
   const startPollingJob = useCallback((jobId, autoTissue, featureCode) => {
     stopPolling();
@@ -321,7 +392,7 @@ export default function AiAnalysisPanel({
             if (result.roi) onPanToRoi?.(result.roi);
             setCompletionNotice('AI analysis completed. Results are ready to review.');
           }
-        } else if (job.status === 'failed') {
+        } else if (job.status === 'failed' || job.status === 'timeout') {
           stopPolling();
           setRunning(false);
           setActiveJob(null);
@@ -363,8 +434,8 @@ export default function AiAnalysisPanel({
   }, [activeJob, stopPolling]);
 
   // ── Run AI analysis ───────────────────────────────────────────────────────
-  const runAnalysis = useCallback(async (autoTissue = false, featureCode = selectedFeatureCode) => {
-    if (running || !['HOVERNET', 'MITOTIC_DETECTION'].includes(featureCode) ||
+  const runAnalysis = useCallback(async (autoTissue = false) => {
+    if (running || !['HOVERNET', 'MITOTIC_DETECTION', CAMELYON_FEATURE_CODE].includes(selectedFeatureCode) ||
         !(entitlements?.features || []).some((feature) =>
           feature.feature_code === featureCode &&
           feature.is_entitled && feature.is_active &&
@@ -391,9 +462,62 @@ export default function AiAnalysisPanel({
       abortRef.current = null;
       return;
     }
-    const payload = autoTissue
-      ? { feature_code: featureCode, auto_tissue: true }
-      : roiRect
+    if (selectedFeatureCode === CAMELYON_FEATURE_CODE && !autoTissue) {
+      if (!roiRect) {
+        onError?.('CAMELYON requires a manually selected ROI.');
+        setRunning(false);
+        abortRef.current = null;
+        return;
+      }
+
+      const x = Math.floor(roiRect.x);
+      const y = Math.floor(roiRect.y);
+      const width = Math.floor(roiRect.width);
+      const height = Math.floor(roiRect.height);
+
+      const slideWidth = Number(slide.width);
+      const slideHeight = Number(slide.height);
+
+      if (
+        ![x, y, width, height].every(Number.isFinite) ||
+        x < 0 ||
+        y < 0 ||
+        width < 224 ||
+        height < 224 ||
+        width > 4480 ||
+        height > 4480 ||
+        !Number.isFinite(slideWidth) ||
+        !Number.isFinite(slideHeight) ||
+        x + width > slideWidth ||
+        y + height > slideHeight
+      ) {
+        onError?.('CAMELYON ROI must be within the slide and between 224 and 4480 pixels per dimension.');
+        setRunning(false);
+        abortRef.current = null;
+        return;
+      }
+    }
+    const payload = selectedFeatureCode === CAMELYON_FEATURE_CODE
+      ? (autoTissue
+        ? {
+            feature_code: CAMELYON_FEATURE_CODE,
+            auto_tissue: true,
+            level: 0,
+            run_in_background: true,
+          }
+        : {
+            feature_code: CAMELYON_FEATURE_CODE,
+            x: Math.floor(roiRect.x),
+            y: Math.floor(roiRect.y),
+            width: Math.floor(roiRect.width),
+            height: Math.floor(roiRect.height),
+            level: 0,
+            auto_tissue: false,
+            run_in_background: true,
+          })
+      : autoTissue
+        ? { feature_code: selectedFeatureCode, auto_tissue: true }
+        : roiRect
         ? {
             feature_code: featureCode,
             x: Math.round(roiRect.x),
@@ -444,7 +568,98 @@ export default function AiAnalysisPanel({
     } finally {
       abortRef.current = null;
     }
-  }, [running, selectedFeatureCode, entitlements, roiRect, slide.id, onAnalysisReady, onError, onPanToRoi, startPollingJob]);
+  }, [running, selectedFeatureCode, entitlements, roiRect, slide.id, slide.width, slide.height, onAnalysisReady, onError, onPanToRoi, startPollingJob]);
+
+  // GrandQC analyzes the complete slide, independent of the ROI-based AI API.
+  const startGrandQc = useCallback(async () => {
+    if (running || !slide?.id || selectedFeatureCode !== 'SLIDE_QUALITY_CONTROL') return;
+    const permitted = (entitlements?.features || []).some((feature) =>
+      feature.feature_code === 'SLIDE_QUALITY_CONTROL' && feature.is_entitled &&
+      feature.is_active && feature.is_implemented && feature.user_enabled
+    );
+    if (!permitted) { onError?.('GrandQC access is unavailable.'); return; }
+    setRunning(true);
+    setQcError('');
+    qcLoadSeqRef.current += 1;
+    setQcResult(null);
+    onQcAnalysisChange?.(null);
+    setQcJob(null);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/api/slides/${slide.id}/qc/analyses`, { method: 'POST' });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : 'Could not start GrandQC');
+      const jobId = body.job_id || body.id;
+      if (!jobId) throw new Error('GrandQC response has no job ID. Check the backend response schema.');
+      setQcJob({ job_id: jobId, status: body.status || 'queued', progress: body.progress });
+      if (qcPollRef.current) clearInterval(qcPollRef.current);
+      let polling = false;
+      const poll = async () => {
+        if (polling) return;
+        polling = true;
+        try {
+          const statusResponse = await apiFetch(`${API_BASE_URL}/api/qc/jobs/${encodeURIComponent(jobId)}`);
+          const job = await statusResponse.json().catch(() => ({}));
+          if (!statusResponse.ok) throw new Error(typeof job.detail === 'string' ? job.detail : 'Unable to retrieve GrandQC job');
+          setQcJob(job);
+          const status = String(job.status || '').toLowerCase();
+          if (['completed', 'failed', 'cancelled', 'canceled'].includes(status)) {
+            clearInterval(qcPollRef.current);
+            qcPollRef.current = null;
+            setRunning(false);
+            if (status === 'completed') {
+              const analysisId = job.analysis_id || job.result?.analysis_id || job.result?.id;
+              if (analysisId) {
+                const resultResponse = await apiFetch(`${API_BASE_URL}/api/qc/analyses/${analysisId}`);
+                const resultBody = await resultResponse.json().catch(() => ({}));
+                if (!resultResponse.ok) throw new Error(typeof resultBody.detail === 'string' ? resultBody.detail : 'Unable to retrieve GrandQC results');
+                setQcResult(resultBody);
+                onQcAnalysisChange?.(resultBody);
+                grandqcService.list(slide.id).then((items) => {
+                  const records = Array.isArray(items) ? items : items?.analyses || items?.items || [];
+                  setQcHistory(records.filter((row) => String(row.status || '').toLowerCase() === 'completed'));
+                }).catch(() => {});
+              } else {
+                setQcResult(job.result || job);
+                onQcAnalysisChange?.(null);
+              }
+              setCompletionNotice('GrandQC whole-slide analysis completed.');
+            } else {
+              const message = job.error || `GrandQC job ${status}.`;
+              setQcError(message);
+              onError?.(message);
+            }
+          }
+        } catch (error) {
+          setQcError(error.message);
+          // Keep polling after transient network errors; the job may still be running.
+        } finally { polling = false; }
+      };
+      qcPollRef.current = setInterval(poll, 3000);
+      poll();
+    } catch (error) {
+      setRunning(false);
+      setQcError(error.message);
+      onError?.(error.message);
+    }
+  }, [running, slide?.id, selectedFeatureCode, entitlements, onError, onQcAnalysisChange]);
+
+  const cancelGrandQc = useCallback(async () => {
+    const jobId = qcJob?.job_id || qcJob?.id;
+    if (!jobId) return;
+    setCancelling(true);
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/api/qc/jobs/${encodeURIComponent(jobId)}/cancel`, { method: 'POST' });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || 'Could not cancel GrandQC');
+      }
+      if (qcPollRef.current) clearInterval(qcPollRef.current);
+      qcPollRef.current = null;
+      setRunning(false);
+      setQcJob((current) => ({ ...current, status: 'cancelled' }));
+    } catch (error) { onError?.(error.message); }
+    finally { setCancelling(false); }
+  }, [qcJob, onError]);
 
   // ── PDF actions ───────────────────────────────────────────────────────────
   const handleDownloadPdf = useCallback(async () => {
@@ -523,6 +738,13 @@ export default function AiAnalysisPanel({
   const confidence = detail?.confidence_summary ?? (detail?.confidence_statistics?.overall) ?? null;
   const isMitotic = isKongNetAnalysis(detail);
   const isKongNetSelected = selectedFeatureCode === 'MITOTIC_DETECTION';
+  const isCamelyonSelected = selectedFeatureCode === CAMELYON_FEATURE_CODE;
+  const isCamelyonResult = isCamelyonAnalysis(detail);
+  const isGrandQcSelected = selectedFeatureCode === 'SLIDE_QUALITY_CONTROL';
+  useEffect(() => {
+    onQcFeatureActiveChange?.(isGrandQcSelected);
+    return () => onQcFeatureActiveChange?.(false);
+  }, [isGrandQcSelected, onQcFeatureActiveChange]);
   const detections = detail?.detections ?? detail?.predictions?.detections ?? [];
   const mitoticGallery = detail?.candidate_gallery ?? detail?.gallery ?? {};
   const candidateImages = Array.isArray(mitoticGallery) ? mitoticGallery : (mitoticGallery?.items ?? []);
@@ -530,13 +752,22 @@ export default function AiAnalysisPanel({
   const mitoticDensity = detail?.candidate_density_per_mm2 ?? detail?.summary?.candidate_density_per_mm2;
   const mitoticMeanScore = detail?.mean_score ?? detail?.confidence_summary?.mean;
   const totalNuclei = detail?.total_nuclei ?? detail?.analysis?.total_nuclei ?? detail?.counts?.total ?? 0;
-  const hasResults = Boolean(detail && ((isMitotic ? mitoticCount : totalNuclei) > 0 || detail.status?.toLowerCase() === 'completed'));
+  const hasResults = Boolean(
+    detail && (
+      (isMitotic ? mitoticCount : totalNuclei) > 0 ||
+      String(detail.status || '').toLowerCase() === 'completed'
+    )
+  );
   const elapsedSec = detail?.elapsed_seconds ?? detail?.inference_duration ?? null;
   const availableFeatures = (entitlements?.features || []).filter((feature) => (
     feature.is_entitled && feature.is_active && feature.is_implemented && feature.user_enabled
   ));
   const selectedFeature = availableFeatures.find((feature) => feature.feature_code === selectedFeatureCode);
-  const canRunSelectedFeature = ['HOVERNET', 'MITOTIC_DETECTION'].includes(selectedFeatureCode) && Boolean(selectedFeature);
+  const canRunSelectedFeature = [
+    'HOVERNET',
+    'MITOTIC_DETECTION',
+    CAMELYON_FEATURE_CODE,
+  ].includes(selectedFeatureCode) && Boolean(selectedFeature);
   const accessDetail = !entitlements?.features?.length
     ? 'Your AI access could not be loaded.'
     : entitlements.features.every((feature) => !feature.is_entitled)
@@ -586,7 +817,11 @@ export default function AiAnalysisPanel({
           <div>
             <p className="ai-panel-title">AI Analysis</p>
             {hasResults && (
-              <p className="ai-panel-subtitle">{isMitotic ? `${mitoticCount} mitotic candidates · KongNet-Det` : `${totalNuclei} nuclei · ${detail?.model_name || 'HoVer-Net'}`}</p>
+              <p className="ai-panel-subtitle">{isCamelyonResult
+                ? `${detail.patch_count ?? detail.summary?.patch_count ?? '—'} patches · CAMELYON`
+                : isMitotic
+                  ? `${mitoticCount} mitotic candidates · KongNet-Det`
+                  : `${totalNuclei} nuclei · ${detail?.model_name || 'HoVer-Net'}`}</p>
             )}
           </div>
         </div>
@@ -645,14 +880,14 @@ export default function AiAnalysisPanel({
                 <div className="ai-progress-title-row">
                   <Loader2 size={13} className="spin ai-progress-spinner" aria-hidden="true" />
                   <span className="ai-progress-stage">
-                    {activeJob?.progress?.stage || (isKongNetSelected ? 'Running KongNet inference…' : 'Running HoVer-Net inference…')}
+                    {(isGrandQcSelected ? qcJob?.progress?.stage : activeJob?.progress?.stage) || (isGrandQcSelected ? 'Running GrandQC whole-slide analysis…' : isKongNetSelected ? 'Running KongNet inference…' : 'Running HoVer-Net inference…')}
                   </span>
                 </div>
                 <button
                   id="ai-cancel-job-btn"
                   type="button"
                   className="ai-progress-cancel-btn"
-                  onClick={handleCancelJob}
+                  onClick={isGrandQcSelected ? cancelGrandQc : handleCancelJob}
                   disabled={cancelling}
                   title="Cancel AI analysis"
                   aria-label="Cancel AI analysis"
@@ -662,7 +897,7 @@ export default function AiAnalysisPanel({
                 </button>
               </div>
 
-              {activeJob?.progress && (
+              {!isGrandQcSelected && activeJob?.progress && (
                 <>
                   <div className="ai-progress-bar-track" aria-hidden="true">
                     <div
@@ -704,18 +939,52 @@ export default function AiAnalysisPanel({
                   </div>
                 </div>
               )}
-              {roiRect ? (() => {
-                const w = Math.round(roiRect.width);
-                const h = Math.round(roiRect.height);
-                const patches = isKongNetSelected ? calcKongnetTiles(w, h, sourceMpp) : calcHovernetPatches(w, h);
-                const isTooLarge = w > 8192 || h > 8192;
-                const isTooSmall = w < 32 || h < 32;
-                const isLargeJob = patches == null ? true : patches > (isKongNetSelected ? 16 : 25);
-                const estSec = isKongNetSelected ? null : Math.round(patches * 2.8);
+              {isGrandQcSelected ? (
+                <>
+                  <p className="ai-roi-prompt">GrandQC checks the entire slide. No ROI selection is required.</p>
+                  <button id="ai-run-grandqc-btn" type="button" className="ai-action-btn"
+                    disabled={!selectedFeature || !slide?.id} onClick={startGrandQc}>
+                    <Play size={14} aria-hidden="true" /> Analyze Whole Slide
+                  </button>
+                </>
+              ) : roiRect ? (() => {
+                const w = Math.floor(roiRect.width);
+                const h = Math.floor(roiRect.height);
+
+                const patches = isCamelyonSelected
+                  ? calcCamelyonPatches(w, h)
+                  : isKongNetSelected
+                    ? calcKongnetTiles(w, h, sourceMpp)
+                    : calcHovernetPatches(w, h);
+
+                const isTooLarge = isCamelyonSelected
+                  ? w > CAMELYON_MAX_ROI || h > CAMELYON_MAX_ROI
+                  : w > 8192 || h > 8192;
+
+                const isTooSmall = isCamelyonSelected
+                  ? w < CAMELYON_PATCH_SIZE || h < CAMELYON_PATCH_SIZE
+                  : w < 32 || h < 32;
+
+                const isOutOfBounds = isCamelyonSelected && (
+                  Math.floor(roiRect.x) < 0 ||
+                  Math.floor(roiRect.y) < 0 ||
+                  Math.floor(roiRect.x) + w > Number(slide.width) ||
+                  Math.floor(roiRect.y) + h > Number(slide.height)
+                );
+
+                const isLargeJob = isCamelyonSelected
+                  ? true
+                  : patches == null
+                    ? true
+                    : patches > (isKongNetSelected ? 16 : 25);
+
+                const estSec = isCamelyonSelected || isKongNetSelected
+                  ? null
+                  : Math.round(patches * 2.8);
 
                 return (
                   <>
-                    <div className={`ai-roi-badge${isTooLarge || isTooSmall ? ' ai-roi-badge--warning' : ''}`} role="status">
+                    <div className={`ai-roi-badge${isTooLarge || isTooSmall || isOutOfBounds ? ' ai-roi-badge--warning' : ''}`} role="status">
                       <div className="ai-roi-badge-title">
                         <span>Target: {roiRect.label || 'Selected Region'}</span>
                         <span>{w} × {h} px</span>
@@ -733,12 +1002,21 @@ export default function AiAnalysisPanel({
                       </div>
                       {isTooLarge && (
                         <div className="ai-roi-badge-error">
-                          ROI exceeds maximum dimension of 8,192 px. Please crop a smaller region.
+                          {isCamelyonSelected
+                            ? 'ROI exceeds the CAMELYON maximum of 4,480 px per dimension. Please crop a smaller region.'
+                            : 'ROI exceeds maximum dimension of 8,192 px. Please crop a smaller region.'}
                         </div>
                       )}
                       {isTooSmall && (
                         <div className="ai-roi-badge-error">
-                          ROI is smaller than minimum dimension of 32 px.
+                          {isCamelyonSelected
+                            ? 'ROI is smaller than the CAMELYON minimum of 224 px per dimension.'
+                            : 'ROI is smaller than minimum dimension of 32 px.'}
+                        </div>
+                      )}
+                      {isOutOfBounds && (
+                        <div className="ai-roi-badge-error">
+                          CAMELYON ROI must stay inside the slide bounds.
                         </div>
                       )}
                     </div>
@@ -747,7 +1025,7 @@ export default function AiAnalysisPanel({
                       type="button"
                       className="ai-action-btn"
                       onClick={() => isLargeJob ? setPendingConfirmation({ autoTissue: false, patches, estSec }) : runAnalysis(false)}
-                      disabled={isTooLarge || isTooSmall || !canRunSelectedFeature}
+                      disabled={isTooLarge || isTooSmall || isOutOfBounds || !canRunSelectedFeature}
                       aria-label={`Analyze selected ROI with ${selectedFeature?.feature_name || 'the selected AI feature'}`}
                     >
                       <Play size={14} aria-hidden="true" />
@@ -760,7 +1038,7 @@ export default function AiAnalysisPanel({
                   Draw or select a rectangle, circle, or pen region to define the analysis area.
                 </p>
               )}
-              <button
+              {!isGrandQcSelected && <button
                 id="ai-auto-detect-btn"
                 type="button"
                 className="ai-action-btn ai-action-btn--secondary"
@@ -770,17 +1048,56 @@ export default function AiAnalysisPanel({
               >
                 <Zap size={14} aria-hidden="true" />
                 Auto-Detect &amp; Analyze
-              </button>
-              {retryRequest && (
-                <button type="button" className="ai-action-btn ai-action-btn--secondary" onClick={() => runAnalysis(retryRequest.autoTissue, retryRequest.featureCode)}>
+              </button>}
+              {!isGrandQcSelected && retryRequest && (
+                <button type="button" className="ai-action-btn ai-action-btn--secondary" onClick={() => runAnalysis(retryRequest.autoTissue)}>
                   Retry last analysis
                 </button>
               )}
             </div>
           )}
 
+          {isGrandQcSelected && qcError && <p className="ai-roi-badge-error" role="alert">{qcError}</p>}
+          {isGrandQcSelected && qcJob && <p className="ai-completion-notice" role="status">
+            GrandQC job: {qcJob.status || 'queued'}
+            {qcJob.progress?.stage ? ` · ${qcJob.progress.stage}` : ''}
+            {qcJob.progress?.percentage != null ? ` · ${qcJob.progress.percentage}%` : ''}
+          </p>}
+          {isGrandQcSelected && qcResult && !running && (
+            <section className="ai-class-section" aria-label="GrandQC results">
+              <h4>GrandQC whole-slide results</h4>
+              <p className="ai-feature-selector__description">Whole-slide QC analysis is complete. Review the artifact map and overlay for research purposes only.</p>
+              {qcResult.id && <p>Analysis #{qcResult.id} · {qcResult.polygon_count ?? qcResult.result?.polygon_count ?? '—'} artifact polygons</p>}
+              <div className="grandqc-summary">
+                {qcHistory.length > 0 && <label>Saved QC analyses
+                  <select className="grandqc-summary__history" value={qcResult?.id || ''}
+                    onChange={(event) => showSavedQc(Number(event.target.value))}>
+                    {qcHistory.map((row) => <option value={row.id} key={row.id}>
+                      #{row.id} · {row.polygon_count ?? '—'} regions · {row.completed_at ? new Date(row.completed_at).toLocaleString() : 'Completed'}
+                    </option>)}
+                  </select>
+                </label>}
+                <div className="grandqc-summary__row">
+                  <strong>Artifact polygons on slide</strong>
+                  <button type="button" aria-pressed={qcVisible} onClick={onToggleQcVisible}>{qcVisible ? 'Hide' : 'Show'}</button>
+                </div>
+                {qcClasses.map(({ name, count }) => <div className="grandqc-summary__row" key={name}>
+                  <button type="button" aria-pressed={!qcHiddenClasses.has(name)} onClick={() => onToggleQcClass?.(name)}>
+                    <span className="grandqc-summary__swatch" style={{ backgroundColor: qcClassColor(name) }} />
+                    {name} {qcHiddenClasses.has(name) ? '(hidden)' : ''}
+                  </button><span>{count}</span>
+                </div>)}
+              </div>
+              <div className="ai-actions">
+                {qcResult.id && <a className="ai-action-btn ai-action-btn--secondary" href={`${API_BASE_URL}/api/qc/analyses/${qcResult.id}/overlay`} target="_blank" rel="noreferrer">View QC overlay</a>}
+                {qcResult.id && <a className="ai-action-btn ai-action-btn--secondary" href={`${API_BASE_URL}/api/qc/analyses/${qcResult.id}/artifact-map`} target="_blank" rel="noreferrer">View artifact map</a>}
+                {qcResult.id && <a className="ai-action-btn ai-action-btn--secondary" href={`${API_BASE_URL}/api/qc/analyses/${qcResult.id}/geojson`} target="_blank" rel="noreferrer">View GeoJSON</a>}
+              </div>
+            </section>
+          )}
+
           {/* ── Summary stats ─────────────────────────────────────── */}
-          {hasResults && !running && (
+          {hasResults && !running && !isGrandQcSelected && (
             <>
               <div className="ai-panel-roi-header">
                 <span className="ai-panel-subtitle">
@@ -801,7 +1118,30 @@ export default function AiAnalysisPanel({
                 </button>
               </div>
 
-              {isMitotic ? (
+              {isCamelyonResult ? (
+                <>
+                <div className="ai-stats-grid">
+                  {[
+                    ['Analysis mode', (detail.analysis_mode ?? detail.summary?.analysis_mode) === 'whole_slide' ? 'Whole slide' : 'Selected ROI'],
+                    ['Analyzed patches', detail.patch_count ?? detail.summary?.patch_count ?? '—'],
+                    ['Eligible tissue patches', detail.eligible_patch_count ?? detail.summary?.eligible_patch_count ?? '—'],
+                    ['Tissue coverage', fmtNum(detail.coverage_fraction ?? detail.summary?.coverage_fraction, 2)],
+                    ['Mean model score', fmtNum(detail.mean_score ?? detail.summary?.mean_score, 4)],
+                    ['Minimum score', fmtNum(detail.min_score ?? detail.summary?.min_score, 4)],
+                    ['Maximum score', fmtNum(detail.max_score ?? detail.summary?.max_score, 4)],
+                    ['Execution time', formatDuration(detail.elapsed_seconds ?? detail.execution_time_seconds)],
+                  ].map(([label, value]) => (
+                    <div className="ai-stat-card" key={label}>
+                      <span className="ai-stat-value">{value}</span>
+                      <span className="ai-stat-label">{label}</span>
+                    </div>
+                  ))}
+                </div>
+                {(detail.partial_coverage ?? detail.summary?.partial_coverage) && (
+                  <p className="ai-roi-badge-error">Partial coverage research run. Unanalyzed tissue is transparent on the heatmap and is not tumor-negative.</p>
+                )}
+                </>
+              ) : isMitotic ? (
                 <>
                   <div className="ai-stats-grid">
                     {[
@@ -907,6 +1247,7 @@ export default function AiAnalysisPanel({
               )}
 
               {/* ── PDF download and report actions ─────────────────── */}
+              {!isCamelyonResult && (
               <div className="ai-actions ai-actions--reports">
                 <button
                   id="ai-pdf-download-btn"
@@ -931,10 +1272,15 @@ export default function AiAnalysisPanel({
                   {generatingReport ? 'Generating…' : 'Generate AI Report'}
                 </button>
               </div>
+              )}
 
               {/* ── Model info ────────────────────────────────────── */}
               <div className="ai-model-info">
-                {isMitotic ? 'KongNet-Det · MIDOG mitotic candidate detection' : 'HoVer-Net Fast · PanNuke weights · 256 × 256 patch'}
+                {isCamelyonResult
+                  ? 'CAMELYON16 · MONAI pathology_tumor_detection · 224 × 224 patches'
+                  : isMitotic
+                    ? 'KongNet-Det · MIDOG mitotic candidate detection'
+                    : 'HoVer-Net Fast · PanNuke weights · 256 × 256 patch'}
                 {elapsedSec != null && ` · ${elapsedSec}s`}
                 {detail.created_at && ` · ${new Date(detail.created_at).toLocaleString()}`}
               </div>
@@ -942,7 +1288,7 @@ export default function AiAnalysisPanel({
           )}
 
           {/* ── History switcher ──────────────────────────────────── */}
-          {analyses.length > 1 && !running && (
+          {analyses.length > 1 && !running && !isGrandQcSelected && (
             <div className="ai-history-section">
               <h4>
                 <RefreshCw size={12} aria-hidden="true" style={{ marginRight: 4, verticalAlign: 'middle' }} />
@@ -957,7 +1303,11 @@ export default function AiAnalysisPanel({
               >
                 {analyses.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {isKongNetAnalysis(a) ? 'KongNet' : (a.model_name || 'HoVer-Net')} · {isKongNetAnalysis(a) ? `${a.candidate_count ?? a.total_nuclei ?? '?'} candidates` : `${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
+                    {isCamelyonAnalysis(a)
+                      ? `${a.patch_count ?? a.summary?.patch_count ?? '?'} patches · CAMELYON${(a.analysis_mode ?? a.summary?.analysis_mode) === 'whole_slide' ? ' · whole slide' : ''}`
+                      : isKongNetAnalysis(a)
+                        ? `${a.candidate_count ?? a.total_nuclei ?? '?'} candidates`
+                        : `${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
                   </option>
                 ))}
               </select>
