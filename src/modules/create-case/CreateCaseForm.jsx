@@ -21,7 +21,7 @@ export default function CreateCaseForm({
 }) {
   const fileInput = useRef(null);
   const [files, setFiles] = useState([]);
-  const [generatedCaseId, setGeneratedCaseId] = useState('CASE-0001');
+  const [generatedCaseId, setGeneratedCaseId] = useState('');
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
@@ -29,7 +29,7 @@ export default function CreateCaseForm({
     caseService.nextId(controller.signal)
       .then((data) => setGeneratedCaseId(data.case_id))
       .catch((error) => {
-        if (error.name !== 'AbortError') setGeneratedCaseId('CASE-0001');
+        if (error.name !== 'AbortError') setGeneratedCaseId('');
       });
     return () => controller.abort();
   }, []);
@@ -52,7 +52,7 @@ export default function CreateCaseForm({
           <div className="create-case-page__details">
             <div className="create-case-page__case-id">
               <label htmlFor="create-case-id">Case ID</label>
-              <div><input id="create-case-id" value={generatedCaseId} readOnly aria-label="Next case ID, assigned when submitted" /></div>
+              <div><input id="create-case-id" name="case_id" value={generatedCaseId} readOnly required aria-label="Next case ID, assigned when submitted" /></div>
             </div>
             <div className="create-case-page__row create-case-page__patient">
               <span>Patient ID *</span>

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
   ZoomIn, ZoomOut, Maximize2, RotateCcw, RotateCw,
   FlipHorizontal, FlipVertical, Sliders, Map, Footprints,
-  Eye, EyeOff, Bookmark, BookmarkCheck, SplitSquareVertical,
+  Eye, EyeOff, Bookmark, BookmarkCheck, SplitSquareVertical, Layers,
   Circle, Keyboard, PenTool, Square, Expand, Minimize2, ChevronDown
 } from 'lucide-react';
 import './ViewerToolbar.css';
@@ -27,6 +27,8 @@ export default function ViewerToolbar({
   // Adjustments & Filters
   showAdjustments,
   onToggleAdjustments,
+  showDip,
+  onToggleDip,
   brightness = 100,
   contrast = 100,
   gamma = 1.0,
@@ -157,6 +159,17 @@ export default function ViewerToolbar({
           <Sliders size={16} />
           <span className="toolbar-btn-text">Adjust</span>
           {isAdjusted && <span className="toolbar-dot" aria-label="Adjusted" />}
+        </button>
+        <button
+          type="button"
+          className={`btn-toolbar ${showDip ? 'btn-toolbar--active' : ''}`}
+          onClick={onToggleDip}
+          title="Digital image processing"
+          aria-pressed={showDip}
+          aria-label="Digital image processing"
+        >
+          <Layers size={16} />
+          <span className="toolbar-btn-text">DIP</span>
         </button>
       </div>
 

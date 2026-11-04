@@ -37,6 +37,21 @@ function isKongNetAnalysis(analysis) {
   return analysis?.feature_code === 'MITOTIC_DETECTION' || /kongnet/i.test(String(analysis?.model_name ?? ''));
 }
 
+const CAMELYON_FEATURE_CODE = 'CAMELYON_TUMOR_DETECTION';
+const CAMELYON_PATCH_SIZE = 224;
+const CAMELYON_MAX_ROI = 4480;
+
+function isCamelyonAnalysis(analysis) {
+  return analysis?.feature_code === CAMELYON_FEATURE_CODE
+    || analysis?.summary?.feature_code === CAMELYON_FEATURE_CODE
+    || /pathology_tumor_detection/i.test(String(analysis?.model_name ?? ''));
+}
+
+function calcCamelyonPatches(width, height) {
+  return Math.floor(width / CAMELYON_PATCH_SIZE)
+    * Math.floor(height / CAMELYON_PATCH_SIZE);
+}
+
 function calcKongnetTiles(w, h, sourceMpp = 0.25) {
   if (!(w > 0 && h > 0 && sourceMpp > 0)) return null;
   const scaledW = Math.max(1, Math.ceil(w * sourceMpp / 0.25));
@@ -375,7 +390,7 @@ export default function AiAnalysisPanel({
             if (result.roi) onPanToRoi?.(result.roi);
             setCompletionNotice('AI analysis completed. Results are ready to review.');
           }
-        } else if (job.status === 'failed') {
+        } else if (job.status === 'failed' || job.status === 'timeout') {
           stopPolling();
           setRunning(false);
           setActiveJob(null);
@@ -418,7 +433,7 @@ export default function AiAnalysisPanel({
 
   // ── Run AI analysis ───────────────────────────────────────────────────────
   const runAnalysis = useCallback(async (autoTissue = false) => {
-    if (running || !['HOVERNET', 'MITOTIC_DETECTION'].includes(selectedFeatureCode) ||
+    if (running || !['HOVERNET', 'MITOTIC_DETECTION', CAMELYON_FEATURE_CODE].includes(selectedFeatureCode) ||
         !(entitlements?.features || []).some((feature) =>
           feature.feature_code === selectedFeatureCode &&
           feature.is_entitled && feature.is_active &&
@@ -444,9 +459,62 @@ export default function AiAnalysisPanel({
       abortRef.current = null;
       return;
     }
-    const payload = autoTissue
-      ? { feature_code: selectedFeatureCode, auto_tissue: true }
-      : roiRect
+    if (selectedFeatureCode === CAMELYON_FEATURE_CODE && !autoTissue) {
+      if (!roiRect) {
+        onError?.('CAMELYON requires a manually selected ROI.');
+        setRunning(false);
+        abortRef.current = null;
+        return;
+      }
+
+      const x = Math.floor(roiRect.x);
+      const y = Math.floor(roiRect.y);
+      const width = Math.floor(roiRect.width);
+      const height = Math.floor(roiRect.height);
+
+      const slideWidth = Number(slide.width);
+      const slideHeight = Number(slide.height);
+
+      if (
+        ![x, y, width, height].every(Number.isFinite) ||
+        x < 0 ||
+        y < 0 ||
+        width < 224 ||
+        height < 224 ||
+        width > 4480 ||
+        height > 4480 ||
+        !Number.isFinite(slideWidth) ||
+        !Number.isFinite(slideHeight) ||
+        x + width > slideWidth ||
+        y + height > slideHeight
+      ) {
+        onError?.('CAMELYON ROI must be within the slide and between 224 and 4480 pixels per dimension.');
+        setRunning(false);
+        abortRef.current = null;
+        return;
+      }
+    }
+    const payload = selectedFeatureCode === CAMELYON_FEATURE_CODE
+      ? (autoTissue
+        ? {
+            feature_code: CAMELYON_FEATURE_CODE,
+            auto_tissue: true,
+            level: 0,
+            run_in_background: true,
+          }
+        : {
+            feature_code: CAMELYON_FEATURE_CODE,
+            x: Math.floor(roiRect.x),
+            y: Math.floor(roiRect.y),
+            width: Math.floor(roiRect.width),
+            height: Math.floor(roiRect.height),
+            level: 0,
+            auto_tissue: false,
+            run_in_background: true,
+          })
+      : autoTissue
+        ? { feature_code: selectedFeatureCode, auto_tissue: true }
+        : roiRect
         ? {
             feature_code: selectedFeatureCode,
             x: Math.round(roiRect.x),
@@ -497,7 +565,7 @@ export default function AiAnalysisPanel({
     } finally {
       abortRef.current = null;
     }
-  }, [running, selectedFeatureCode, entitlements, roiRect, slide.id, onAnalysisReady, onError, onPanToRoi, startPollingJob]);
+  }, [running, selectedFeatureCode, entitlements, roiRect, slide.id, slide.width, slide.height, onAnalysisReady, onError, onPanToRoi, startPollingJob]);
 
   // GrandQC analyzes the complete slide, independent of the ROI-based AI API.
   const startGrandQc = useCallback(async () => {
@@ -667,6 +735,8 @@ export default function AiAnalysisPanel({
   const confidence = detail?.confidence_summary ?? (detail?.confidence_statistics?.overall) ?? null;
   const isMitotic = isKongNetAnalysis(detail);
   const isKongNetSelected = selectedFeatureCode === 'MITOTIC_DETECTION';
+  const isCamelyonSelected = selectedFeatureCode === CAMELYON_FEATURE_CODE;
+  const isCamelyonResult = isCamelyonAnalysis(detail);
   const isGrandQcSelected = selectedFeatureCode === 'SLIDE_QUALITY_CONTROL';
   useEffect(() => {
     onQcFeatureActiveChange?.(isGrandQcSelected);
@@ -679,13 +749,22 @@ export default function AiAnalysisPanel({
   const mitoticDensity = detail?.candidate_density_per_mm2 ?? detail?.summary?.candidate_density_per_mm2;
   const mitoticMeanScore = detail?.mean_score ?? detail?.confidence_summary?.mean;
   const totalNuclei = detail?.total_nuclei ?? detail?.analysis?.total_nuclei ?? detail?.counts?.total ?? 0;
-  const hasResults = Boolean(detail && ((isMitotic ? mitoticCount : totalNuclei) > 0 || detail.status?.toLowerCase() === 'completed'));
+  const hasResults = Boolean(
+    detail && (
+      (isMitotic ? mitoticCount : totalNuclei) > 0 ||
+      String(detail.status || '').toLowerCase() === 'completed'
+    )
+  );
   const elapsedSec = detail?.elapsed_seconds ?? detail?.inference_duration ?? null;
   const availableFeatures = (entitlements?.features || []).filter((feature) => (
     feature.is_entitled && feature.is_active && feature.is_implemented && feature.user_enabled
   ));
   const selectedFeature = availableFeatures.find((feature) => feature.feature_code === selectedFeatureCode);
-  const canRunSelectedFeature = ['HOVERNET', 'MITOTIC_DETECTION'].includes(selectedFeatureCode) && Boolean(selectedFeature);
+  const canRunSelectedFeature = [
+    'HOVERNET',
+    'MITOTIC_DETECTION',
+    CAMELYON_FEATURE_CODE,
+  ].includes(selectedFeatureCode) && Boolean(selectedFeature);
   const accessDetail = !entitlements?.features?.length
     ? 'Your AI access could not be loaded.'
     : entitlements.features.every((feature) => !feature.is_entitled)
@@ -735,7 +814,11 @@ export default function AiAnalysisPanel({
           <div>
             <p className="ai-panel-title">AI Analysis</p>
             {hasResults && (
-              <p className="ai-panel-subtitle">{isMitotic ? `${mitoticCount} mitotic candidates · KongNet-Det` : `${totalNuclei} nuclei · ${detail?.model_name || 'HoVer-Net'}`}</p>
+              <p className="ai-panel-subtitle">{isCamelyonResult
+                ? `${detail.patch_count ?? detail.summary?.patch_count ?? '—'} patches · CAMELYON`
+                : isMitotic
+                  ? `${mitoticCount} mitotic candidates · KongNet-Det`
+                  : `${totalNuclei} nuclei · ${detail?.model_name || 'HoVer-Net'}`}</p>
             )}
           </div>
         </div>
@@ -845,17 +928,43 @@ export default function AiAnalysisPanel({
                   </button>
                 </>
               ) : roiRect ? (() => {
-                const w = Math.round(roiRect.width);
-                const h = Math.round(roiRect.height);
-                const patches = isKongNetSelected ? calcKongnetTiles(w, h, sourceMpp) : calcHovernetPatches(w, h);
-                const isTooLarge = w > 8192 || h > 8192;
-                const isTooSmall = w < 32 || h < 32;
-                const isLargeJob = patches == null ? true : patches > (isKongNetSelected ? 16 : 25);
-                const estSec = isKongNetSelected ? null : Math.round(patches * 2.8);
+                const w = Math.floor(roiRect.width);
+                const h = Math.floor(roiRect.height);
+
+                const patches = isCamelyonSelected
+                  ? calcCamelyonPatches(w, h)
+                  : isKongNetSelected
+                    ? calcKongnetTiles(w, h, sourceMpp)
+                    : calcHovernetPatches(w, h);
+
+                const isTooLarge = isCamelyonSelected
+                  ? w > CAMELYON_MAX_ROI || h > CAMELYON_MAX_ROI
+                  : w > 8192 || h > 8192;
+
+                const isTooSmall = isCamelyonSelected
+                  ? w < CAMELYON_PATCH_SIZE || h < CAMELYON_PATCH_SIZE
+                  : w < 32 || h < 32;
+
+                const isOutOfBounds = isCamelyonSelected && (
+                  Math.floor(roiRect.x) < 0 ||
+                  Math.floor(roiRect.y) < 0 ||
+                  Math.floor(roiRect.x) + w > Number(slide.width) ||
+                  Math.floor(roiRect.y) + h > Number(slide.height)
+                );
+
+                const isLargeJob = isCamelyonSelected
+                  ? true
+                  : patches == null
+                    ? true
+                    : patches > (isKongNetSelected ? 16 : 25);
+
+                const estSec = isCamelyonSelected || isKongNetSelected
+                  ? null
+                  : Math.round(patches * 2.8);
 
                 return (
                   <>
-                    <div className={`ai-roi-badge${isTooLarge || isTooSmall ? ' ai-roi-badge--warning' : ''}`} role="status">
+                    <div className={`ai-roi-badge${isTooLarge || isTooSmall || isOutOfBounds ? ' ai-roi-badge--warning' : ''}`} role="status">
                       <div className="ai-roi-badge-title">
                         <span>Target: {roiRect.label || 'Selected Region'}</span>
                         <span>{w} × {h} px</span>
@@ -873,12 +982,21 @@ export default function AiAnalysisPanel({
                       </div>
                       {isTooLarge && (
                         <div className="ai-roi-badge-error">
-                          ROI exceeds maximum dimension of 8,192 px. Please crop a smaller region.
+                          {isCamelyonSelected
+                            ? 'ROI exceeds the CAMELYON maximum of 4,480 px per dimension. Please crop a smaller region.'
+                            : 'ROI exceeds maximum dimension of 8,192 px. Please crop a smaller region.'}
                         </div>
                       )}
                       {isTooSmall && (
                         <div className="ai-roi-badge-error">
-                          ROI is smaller than minimum dimension of 32 px.
+                          {isCamelyonSelected
+                            ? 'ROI is smaller than the CAMELYON minimum of 224 px per dimension.'
+                            : 'ROI is smaller than minimum dimension of 32 px.'}
+                        </div>
+                      )}
+                      {isOutOfBounds && (
+                        <div className="ai-roi-badge-error">
+                          CAMELYON ROI must stay inside the slide bounds.
                         </div>
                       )}
                     </div>
@@ -887,7 +1005,7 @@ export default function AiAnalysisPanel({
                       type="button"
                       className="ai-action-btn"
                       onClick={() => isLargeJob ? setPendingConfirmation({ autoTissue: false, patches, estSec }) : runAnalysis(false)}
-                      disabled={isTooLarge || isTooSmall || !canRunSelectedFeature}
+                      disabled={isTooLarge || isTooSmall || isOutOfBounds || !canRunSelectedFeature}
                       aria-label={`Analyze selected ROI with ${selectedFeature?.feature_name || 'the selected AI feature'}`}
                     >
                       <Play size={14} aria-hidden="true" />
@@ -980,7 +1098,30 @@ export default function AiAnalysisPanel({
                 </button>
               </div>
 
-              {isMitotic ? (
+              {isCamelyonResult ? (
+                <>
+                <div className="ai-stats-grid">
+                  {[
+                    ['Analysis mode', (detail.analysis_mode ?? detail.summary?.analysis_mode) === 'whole_slide' ? 'Whole slide' : 'Selected ROI'],
+                    ['Analyzed patches', detail.patch_count ?? detail.summary?.patch_count ?? '—'],
+                    ['Eligible tissue patches', detail.eligible_patch_count ?? detail.summary?.eligible_patch_count ?? '—'],
+                    ['Tissue coverage', fmtNum(detail.coverage_fraction ?? detail.summary?.coverage_fraction, 2)],
+                    ['Mean model score', fmtNum(detail.mean_score ?? detail.summary?.mean_score, 4)],
+                    ['Minimum score', fmtNum(detail.min_score ?? detail.summary?.min_score, 4)],
+                    ['Maximum score', fmtNum(detail.max_score ?? detail.summary?.max_score, 4)],
+                    ['Execution time', formatDuration(detail.elapsed_seconds ?? detail.execution_time_seconds)],
+                  ].map(([label, value]) => (
+                    <div className="ai-stat-card" key={label}>
+                      <span className="ai-stat-value">{value}</span>
+                      <span className="ai-stat-label">{label}</span>
+                    </div>
+                  ))}
+                </div>
+                {(detail.partial_coverage ?? detail.summary?.partial_coverage) && (
+                  <p className="ai-roi-badge-error">Partial coverage research run. Unanalyzed tissue is transparent on the heatmap and is not tumor-negative.</p>
+                )}
+                </>
+              ) : isMitotic ? (
                 <>
                   <div className="ai-stats-grid">
                     {[
@@ -1086,6 +1227,7 @@ export default function AiAnalysisPanel({
               )}
 
               {/* ── PDF download and report actions ─────────────────── */}
+              {!isCamelyonResult && (
               <div className="ai-actions ai-actions--reports">
                 <button
                   id="ai-pdf-download-btn"
@@ -1110,10 +1252,15 @@ export default function AiAnalysisPanel({
                   {generatingReport ? 'Generating…' : 'Generate AI Report'}
                 </button>
               </div>
+              )}
 
               {/* ── Model info ────────────────────────────────────── */}
               <div className="ai-model-info">
-                {isMitotic ? 'KongNet-Det · MIDOG mitotic candidate detection' : 'HoVer-Net Fast · PanNuke weights · 256 × 256 patch'}
+                {isCamelyonResult
+                  ? 'CAMELYON16 · MONAI pathology_tumor_detection · 224 × 224 patches'
+                  : isMitotic
+                    ? 'KongNet-Det · MIDOG mitotic candidate detection'
+                    : 'HoVer-Net Fast · PanNuke weights · 256 × 256 patch'}
                 {elapsedSec != null && ` · ${elapsedSec}s`}
                 {detail.created_at && ` · ${new Date(detail.created_at).toLocaleString()}`}
               </div>
@@ -1136,7 +1283,11 @@ export default function AiAnalysisPanel({
               >
                 {analyses.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {isKongNetAnalysis(a) ? `${a.candidate_count ?? a.total_nuclei ?? '?'} candidates` : `${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
+                    {isCamelyonAnalysis(a)
+                      ? `${a.patch_count ?? a.summary?.patch_count ?? '?'} patches · CAMELYON${(a.analysis_mode ?? a.summary?.analysis_mode) === 'whole_slide' ? ' · whole slide' : ''}`
+                      : isKongNetAnalysis(a)
+                        ? `${a.candidate_count ?? a.total_nuclei ?? '?'} candidates`
+                        : `${a.total_nuclei ?? '?'} nuclei`} · {a.created_at ? new Date(a.created_at).toLocaleString() : `#${a.id}`}
                   </option>
                 ))}
               </select>
