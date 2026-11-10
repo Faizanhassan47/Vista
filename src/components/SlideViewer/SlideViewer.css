@@ -112,3 +112,59 @@
   background-color: #0a0d0f;
 }
 
+.radiology-stage { overflow: hidden; display: flex; align-items: center; justify-content: center; min-height: 420px; flex: 1; }
+.radiology-viewer, .radiology-workstation { display: flex; flex-direction: column; min-height: 560px; height: 100%; background: #0b1014; }
+.radiology-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 6px 8px; border-bottom: 1px solid #2a343b; }
+.radiology-toolbar__group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.radiology-toolbar .btn-control-secondary { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; }
+.radiology-toolbar .btn-control-secondary.is-active { outline: 1px solid var(--primary, #6d8cff); }
+.radiology-toolbar .btn-control-secondary:disabled { opacity: 0.45; }
+.radiology-workstation__body { display: grid; grid-template-columns: minmax(0, 1fr) 280px; flex: 1; min-height: 480px; }
+.radiology-workstation__body.is-panel-closed { grid-template-columns: minmax(0, 1fr); }
+.radiology-overlay { position: absolute; z-index: 2; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #d5dee4; pointer-events: none; text-shadow: 0 1px 2px #000; }
+.radiology-overlay--tl { top: 8px; left: 10px; }
+.radiology-overlay--tr { top: 8px; right: 10px; text-align: right; }
+.radiology-marker { position: absolute; z-index: 2; color: #d5dee4; font-size: 13px; font-weight: 600; pointer-events: none; }
+.radiology-marker--left { left: 8px; top: 50%; }
+.radiology-marker--right { right: 8px; top: 50%; }
+.radiology-marker--top { top: 8px; left: 50%; }
+.radiology-marker--bottom { bottom: 28px; left: 50%; }
+.imaging-stack { display: flex; flex-direction: column; gap: 8px; }
+.radiology-stage { position: relative; }
+@media (max-width: 1100px) {
+  .radiology-workstation__body { grid-template-columns: minmax(0, 1fr); }
+  .radiology-workstation__body .imaging-panel { max-height: 280px; }
+}
+.radiology-stage.is-pan { cursor: grab; }
+.radiology-stage__frame { position: relative; transform-origin: center center; }
+.radiology-stage__frame img { display: block; width: 100%; height: 100%; max-width: none; max-height: none; }
+.radiology-stage__overlay { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.medical-shell { display: grid; grid-template-columns: minmax(0, 1fr) 280px; grid-template-rows: auto auto minmax(420px, 1fr) auto; gap: 8px; min-height: 640px; }
+.medical-shell--collapsed { grid-template-columns: minmax(0, 1fr); }
+.medical-shell--collapsed .imaging-panel { display: none; }
+.medical-modes, .medical-tools, .radiology-viewer__slider { grid-column: 1 / -1; }
+.medical-canvas { grid-column: 1; grid-row: 3; background: #0b1014; border: 1px solid #2a343b; border-radius: 10px; }
+.medical-modes, .medical-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.medical-mode, .medical-tools .btn-control-secondary { display: inline-flex; align-items: center; gap: 6px; }
+.medical-mode.is-active, .medical-tools .btn-control-secondary.is-active { outline: 2px solid var(--primary, #6d8cff); }
+.medical-modes__meta, .medical-modes__slice { color: #d5dee4; font-size: 0.85rem; }
+.imaging-panel { grid-column: 2; grid-row: 3; display: flex; flex-direction: column; gap: 10px; padding: 14px; overflow: auto; background: #141b21; border: 1px solid #2a343b; border-radius: 10px; }
+.imaging-panel h3 { margin: 0; font-size: 0.95rem; }
+.imaging-panel label, .imaging-pair label { display: flex; flex-direction: column; gap: 4px; font-size: 0.8rem; }
+.imaging-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.imaging-panel input, .imaging-panel select { min-height: 32px; }
+.imaging-check { flex-direction: row; align-items: center; }
+.imaging-presets, .imaging-panel .btn-primary, .imaging-panel .btn-control-secondary { display: flex; gap: 6px; flex-wrap: wrap; }
+.imaging-note { margin: 0; font-size: 0.75rem; color: #c5d0d6; }
+.radiology-viewer__slider { display: flex; align-items: center; gap: 10px; padding: 4px 8px 0; }
+.radiology-viewer__slider input { flex: 1; }
+.radiology-3d-layout { display: flex; flex: 1; width: 100%; min-height: 520px; align-self: stretch; align-items: stretch; }
+.radiology-3d { position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 520px; }
+.radiology-3d__canvas { position: relative; flex: 1 1 auto; width: 100%; min-height: 520px; }
+.radiology-3d-layout .imaging-panel { position: relative; flex: 0 0 280px; grid-column: auto; grid-row: auto; max-height: none; }
+@media (max-width: 1100px) {
+  .medical-shell { grid-template-columns: minmax(0, 1fr); }
+  .imaging-panel { grid-column: 1; grid-row: 4; max-height: 280px; }
+  .radiology-viewer__slider { grid-row: 5; }
+}
+
