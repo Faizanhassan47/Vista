@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Maximize2, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import WsiViewer from '../WsiViewer/WsiViewer';
+import RadiologyViewer from './RadiologyViewer';
 import './SlideViewer.css';
 
 export default function SlideViewer({ slide, zoom, setZoom, position, setPosition, dragStart, setDragStart,
@@ -60,6 +61,7 @@ export default function SlideViewer({ slide, zoom, setZoom, position, setPositio
   }, [slide.file_type, setPosition, setZoom]);
 
   if (slide.file_type === 'wsi' || slide.file_type === 'dicom-wsi') return <WsiViewer slide={slide} onError={onError} syncViews={syncViews} syncedViewerRef={syncedViewerRef} externalViewerRef={viewerRef} onOpenRegistration={onOpenRegistration} onOpenCompare={onOpenCompare} activePanel={activePanel} />;
+  if (slide.file_type === 'dicom-stack' || slide.file_type === 'nifti') return <RadiologyViewer slide={slide} onError={onError} />;
 
   const down = (event) => {
     setIsDragging(true);

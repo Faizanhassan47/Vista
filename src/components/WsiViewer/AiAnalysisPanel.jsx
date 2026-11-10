@@ -844,7 +844,7 @@ export default function AiAnalysisPanel({
             <p className="ai-feature-selector__label">AI features on this slide</p>
             <div className="ai-feature-list">
               {availableFeatures.map((feature) => {
-                const executable = ['HOVERNET', 'MITOTIC_DETECTION', 'SLIDE_QUALITY_CONTROL'].includes(feature.feature_code);
+                const executable = ['HOVERNET', 'MITOTIC_DETECTION', CAMELYON_FEATURE_CODE, 'SLIDE_QUALITY_CONTROL'].includes(feature.feature_code);
                 const saved = analyses.find((item) => (item.feature_code || (isKongNetAnalysis(item) ? 'MITOTIC_DETECTION' : 'HOVERNET')) === feature.feature_code);
                 const viewing = detail?.id === saved?.id;
                 const featureTitle = feature.catalog_title || feature.feature_name;
@@ -868,7 +868,7 @@ export default function AiAnalysisPanel({
                 );
               })}
             </div>
-            <p className="ai-feature-selector__description">This slide can run HoVer-Net, KongNet, and GrandQC. HoVer-Net and KongNet results stay saved. Camelyon does not run by adding another slide.</p>
+            <p className="ai-feature-selector__description">HoVer-Net, KongNet-Det, GrandQC, and CAMELYON can run when your account and this slide allow them. Each saved result stays with the slide.</p>
           </div>
 
           {completionNotice && <p className="ai-completion-notice" role="status">{completionNotice}</p>}
@@ -1316,7 +1316,7 @@ export default function AiAnalysisPanel({
         </>
       )}
       <Modal open={Boolean(unavailableFeature)} title="This AI feature cannot run" onClose={() => setUnavailableFeature(null)} footer={<button type="button" className="modal-button modal-button--secondary" onClick={() => setUnavailableFeature(null)}>Close</button>}>
-        <p>This slide can run HoVer-Net, KongNet-Det, and GrandQC. HoVer-Net and KongNet results stay saved. {unavailableFeature} is not connected to the viewer, so it cannot be started on any slide. Adding another slide does not run it.</p>
+        <p>{unavailableFeature} is not connected to this viewer. HoVer-Net, KongNet-Det, GrandQC, and CAMELYON remain available when your account and the selected slide allow them.</p>
       </Modal>
     </section>
   );

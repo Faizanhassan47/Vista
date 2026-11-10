@@ -29,7 +29,9 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     let mounted = true;
-    apiFetch(`${API_BASE_URL}/api/auth/me`)
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12000);
+    apiFetch(`${API_BASE_URL}/api/auth/me`, { signal: controller.signal })
       .then(async (res) => {
         if (!mounted) return;
         if (res.ok) {
@@ -43,6 +45,7 @@ export const AuthProvider = ({ children }) => {
         if (mounted) setUser(null);
       })
       .finally(() => {
+        window.clearTimeout(timeout);
         if (mounted) setLoading(false);
       });
 
@@ -56,6 +59,8 @@ export const AuthProvider = ({ children }) => {
     window.addEventListener('auth:unauthorized', clearUser);
     return () => {
       mounted = false;
+      controller.abort();
+      window.clearTimeout(timeout);
       window.removeEventListener('auth:unauthorized', clearUser);
     };
   }, []);

@@ -336,11 +336,14 @@ export default function App() {
     const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? '';
     const supportedImages = new Set(['.jpg', '.jpeg', '.png']);
     const supportedWsi = new Set(['.svs', '.tif', '.tiff']);
-    if (!supportedImages.has(extension) && !supportedWsi.has(extension)) {
-      toast.error('Upload a JPG, PNG, SVS, or OpenSlide-compatible TIFF file.');
+    const supportedMedical = new Set(['.dcm', '.dicom', '.nii', '.gz']);
+    const medicalName = file.name.toLowerCase();
+    const isMedical = supportedMedical.has(extension) || medicalName.endsWith('.nii.gz');
+    if (!supportedImages.has(extension) && !supportedWsi.has(extension) && !isMedical) {
+      toast.error('Upload a JPG, PNG, SVS, TIFF, DICOM, or NIfTI file.');
       return false;
     }
-    const isWsi = supportedWsi.has(extension);
+    const isWsi = supportedWsi.has(extension) || isMedical;
     const limit = (isWsi ? wsiLimitMb : 10) * 1024 * 1024;
     if (file.size > limit) {
       toast.error(`File exceeds the ${isWsi ? wsiLimitMb : 10} MB limit.`);
@@ -366,8 +369,16 @@ export default function App() {
       caseForm.delete('image');
       caseForm.set('case_id', caseId);
       const response = await apiFetch(`${API}/api/cases`, { method: 'POST', body: caseForm });
-      const data = await response.json();
-      if (!response.ok) throw new Error(apiErrorMessage(data.detail, 'Could not create case'));
+      let data = await response.json().catch(() => ({}));
+      if (response.status === 409) {
+        const existing = await apiFetch(`${API}/api/cases?search=${encodeURIComponent(caseId)}&limit=25`);
+        const existingBody = await existing.json().catch(() => ({}));
+        const match = (existingBody.items || existingBody || []).find((item) => item.case_id === caseId);
+        if (!existing.ok || !match) throw new Error(apiErrorMessage(data.detail, 'Case ID already exists'));
+        data = match;
+      } else if (!response.ok) {
+        throw new Error(apiErrorMessage(data.detail, 'Could not create case'));
+      }
       if (reviewer) {
         const reviewerResponse = await apiFetch(`${API}/api/cases/${data.id}/reviewer`, {
           method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewer }),
@@ -376,7 +387,23 @@ export default function App() {
         if (!reviewerResponse.ok) throw new Error(apiErrorMessage(reviewerData.detail, 'Case created, but doctor assignment failed'));
       }
       const uploadErrors = [];
-      for (const [index, file] of files.entries()) {
+      const medical = files.filter((file) => /\.(dcm|dicom|nii|nii\.gz)$/i.test(file.name));
+      const pathology = files.filter((file) => !medical.includes(file));
+      if (medical.length) {
+        const imagingForm = new FormData();
+        medical.forEach((file) => imagingForm.append('files', file));
+        imagingForm.append('label', form.elements.slide_label?.value || 'Imaging');
+        try {
+          const imagingResponse = await apiFetch(`${API}/api/cases/${data.id}/imaging`, { method: 'POST', body: imagingForm });
+          const imagingData = await imagingResponse.json().catch(() => ({}));
+          if (!imagingResponse.ok && !(imagingResponse.status === 409 && data.id && String(imagingData.detail || '').includes(data.case_id || caseId))) {
+            throw new Error(apiErrorMessage(imagingData.detail, 'Imaging upload failed'));
+          }
+        } catch (error) {
+          uploadErrors.push(error.message);
+        }
+      }
+      for (const [index, file] of pathology.entries()) {
         const slideForm = new FormData();
         slideForm.append('image', file);
         slideForm.append('label', index === 0 ? (form.elements.slide_label.value || 'Slide 1') : `Slide ${index + 1}`);
@@ -389,17 +416,19 @@ export default function App() {
           uploadErrors.push(`${file.name}: ${error.message}`);
         }
       }
+      let linkWarning = '';
       try {
         await patientService.linkCase(selectedPatient.id, { case_id: data.id, accession_number: data.case_id, priority: 'Routine' });
       } catch (linkError) {
-        throw new Error(linkError.message || 'Case created, but patient linking failed');
+        linkWarning = linkError.message || 'patient link failed';
       }
       form.reset();
       setSelectedPatient(null);
       setShowCreateCase(false);
       navigate(`/cases?case=${data.id}`, { replace: true });
       notifyClinicalDataChanged({ type: 'case-created', caseId: data.id });
-      if (uploadErrors.length) toast.error(`Case created, but some slides could not be uploaded: ${uploadErrors.join('; ')}`);
+      if (uploadErrors.length) toast.error(`Case ${data.case_id} was created. Image upload did not finish: ${uploadErrors.join('; ')}. Open the case and upload the files again.`);
+      else if (linkWarning) toast.error(`Case ${data.case_id} was created, but the patient link did not finish: ${linkWarning}`);
       else toast.success(`Case “${data.case_id}” created.`);
     } catch (error) {
       toast.error(error.message);
