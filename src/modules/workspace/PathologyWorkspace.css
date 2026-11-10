@@ -3377,9 +3377,13 @@ body {
 .layout--case-review .multi-slide-card {
   display: grid;
   grid-template-columns: 190px minmax(0, 1fr);
-  grid-template-rows: auto minmax(560px, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 10px;
   padding: 12px;
+  height: calc(100vh - 148px);
+  min-height: 560px;
+  max-height: calc(100vh - 148px);
+  overflow: hidden;
 }
 
 .layout--case-review .case-inspector {
@@ -3388,12 +3392,14 @@ body {
 
 .layout--case-review .slide-tray {
   grid-column: 1;
-  grid-row: 1 / span 4;
+  grid-row: 1 / -1;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 10px;
-  max-height: 720px;
+  max-height: none;
+  height: 100%;
+  min-height: 0;
   padding: 4px;
   overflow-y: auto;
   overflow-x: hidden;
@@ -3482,16 +3488,25 @@ body {
   margin: 0;
 }
 
-.layout--case-review .wsi-annotation-workspace {
+.layout--case-review .wsi-annotation-workspace,
+.layout--case-review .radiology-workstation,
+.layout--case-review .radiology-viewer,
+.layout--case-review .compare-container {
   grid-column: 2;
   grid-row: 2;
-  min-height: 560px;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .layout--case-review .add-slide-form,
 .layout--case-review .edit-slide-form,
 .layout--case-review .qc-form {
   grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+  z-index: 2;
 }
 
 .layout--case-review .viewer-status-strip {
@@ -3583,11 +3598,34 @@ body {
 @media (max-width: 900px) {
   .layout--case-review .multi-slide-card {
     display: block;
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .layout--case-review .wsi-annotation-workspace,
+  .layout--case-review .radiology-workstation,
+  .layout--case-review .radiology-viewer,
+  .layout--case-review .compare-container {
+    grid-column: auto;
+    grid-row: auto;
+    height: min(70vh, 640px);
+    max-height: none;
+  }
+
+  .layout--case-review .add-slide-form,
+  .layout--case-review .edit-slide-form,
+  .layout--case-review .qc-form {
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .layout--case-review .slide-tray {
+    grid-column: auto;
+    grid-row: auto;
     flex-direction: row;
     max-height: none;
+    height: auto;
     margin-bottom: 10px;
     overflow-x: auto;
     overflow-y: hidden;
