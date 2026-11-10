@@ -441,16 +441,56 @@ export default function App() {
     event.preventDefault();
     if (busy || !selectedCase) return;
     const form = event.currentTarget;
-    const file = form.elements.image.files[0];
-    if (!validateFile(file)) return;
+    const files = Array.from(form.elements.image?.files || []);
+    if (!files.length) {
+      toast.error('Choose a file to upload.');
+      return;
+    }
+    if (files.some((file) => !validateFile(file))) return;
+    const medical = files.filter((file) => /\.(dcm|dicom|nii|nii\.gz)$/i.test(file.name));
+    const pathology = files.filter((file) => !medical.includes(file));
+    if (medical.length && pathology.length) {
+      toast.error('Upload DICOM/NIfTI separately from JPG, PNG, SVS, or TIFF slides.');
+      return;
+    }
     setBusy(true);
-    toast('Uploading and validating slide…');
+    toast(medical.length ? 'Uploading imaging series…' : 'Uploading and validating slide…');
     try {
-      const response = await apiFetch(`${API}/api/cases/${selectedCase.id}/slides`, {
-        method: 'POST', body: new FormData(form),
-      });
-      const slide = await response.json();
-      if (!response.ok) throw new Error(slide.detail || 'Slide upload failed');
+      let slide;
+      if (medical.length) {
+        const imagingForm = new FormData();
+        medical.forEach((file) => imagingForm.append('files', file));
+        imagingForm.append('label', form.elements.label?.value || 'Imaging');
+        const response = await apiFetch(`${API}/api/cases/${selectedCase.id}/imaging`, {
+          method: 'POST', body: imagingForm,
+        });
+        slide = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(apiErrorMessage(slide.detail, 'Imaging upload failed'));
+      } else {
+        const slideForm = new FormData();
+        slideForm.append('image', pathology[0]);
+        slideForm.append('label', form.elements.label?.value || 'Slide 1');
+        slideForm.append('stain', form.elements.stain?.value || '');
+        slideForm.append('specimen_description', form.elements.specimen_description?.value || '');
+        const response = await apiFetch(`${API}/api/cases/${selectedCase.id}/slides`, {
+          method: 'POST', body: slideForm,
+        });
+        slide = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(apiErrorMessage(slide.detail, 'Slide upload failed'));
+        for (const [index, file] of pathology.slice(1).entries()) {
+          const extra = new FormData();
+          extra.append('image', file);
+          extra.append('label', `${form.elements.label?.value || 'Slide'} ${index + 2}`);
+          extra.append('stain', form.elements.stain?.value || '');
+          extra.append('specimen_description', form.elements.specimen_description?.value || '');
+          const extraResponse = await apiFetch(`${API}/api/cases/${selectedCase.id}/slides`, {
+            method: 'POST', body: extra,
+          });
+          const extraSlide = await extraResponse.json().catch(() => ({}));
+          if (!extraResponse.ok) throw new Error(apiErrorMessage(extraSlide.detail, `${file.name}: upload failed`));
+          slide = extraSlide;
+        }
+      }
       form.reset();
       await refresh();
       setSelectedSlideId(slide.id);
@@ -635,7 +675,15 @@ export default function App() {
     <Field label="Slide label *"><input name="label" required maxLength={120} placeholder="Slide A H&E" /></Field>
     <Field label="Stain"><input name="stain" placeholder="H&E, IHC, PAS…" /></Field>
     <Field label="Specimen description"><input name="specimen_description" placeholder="Block, level, tissue…" /></Field>
-    <Field label={`File (JPG/PNG max 10 MB, SVS/TIF/TIFF max ${wsiLimitMb} MB) *`}><input name="image" required type="file" accept="image/jpeg,image/png,image/tiff,.svs,.tif,.tiff" /></Field>
+    <Field label={`File (JPG/PNG max 10 MB, SVS/TIF/TIFF/DICOM/NIfTI max ${wsiLimitMb} MB) *`}>
+      <input
+        name="image"
+        required
+        type="file"
+        multiple
+        accept="image/jpeg,image/png,image/tiff,.svs,.tif,.tiff,.dcm,.dicom,.nii,.nii.gz"
+      />
+    </Field>
     <button className="btn-primary" disabled={busy}><Upload size={16} /> {busy ? 'Uploading…' : 'Upload Slide'}</button>
   </form> : null;
   const canRemoveSlides = ['Laboratory Manager', SYSTEM_ADMIN_ROLE, SUPER_ADMIN_ROLE].includes(user?.role);
