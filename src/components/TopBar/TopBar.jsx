@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, LogOut, Moon, Sun, UserRound } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../modules/auth/AuthProvider';
@@ -12,6 +12,7 @@ export default function TopBar() {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState({ cases: [], patients: [] });
   const [profileOpen, setProfileOpen] = useState(false);
+  const accountRef = useRef(null);
   const [theme, setTheme] = useState(() => localStorage.getItem('vista-theme') || 'light');
   const displayName = user?.display_name || user?.username || 'User';
 
@@ -19,6 +20,15 @@ export default function TopBar() {
     document.documentElement.dataset.theme = theme;
     localStorage.setItem('vista-theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    if (!profileOpen) return undefined;
+    const closeOnOutside = (event) => {
+      if (!accountRef.current?.contains(event.target)) setProfileOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    return () => document.removeEventListener('pointerdown', closeOnOutside);
+  }, [profileOpen]);
 
   useEffect(() => {
     const term = query.trim();
@@ -53,7 +63,7 @@ export default function TopBar() {
         {!results.cases.length && !results.patients.length && <p>No permitted records found.</p>}
       </div>}
     </div>
-    <div className="top-bar__account">
+    <div className="top-bar__account" ref={accountRef}>
       <button type="button" className="top-bar__profile" aria-expanded={profileOpen} aria-haspopup="menu" aria-controls="top-bar-profile-menu" onClick={() => setProfileOpen((open) => !open)}>
         <span className="top-bar__avatar"><UserRound size={16} aria-hidden="true" /></span><span className="top-bar__identity"><strong>{displayName}</strong><small>{user?.role || 'User'}</small></span><ChevronDown className="top-bar__chevron" size={14} />
       </button>
