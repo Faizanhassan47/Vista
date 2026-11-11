@@ -10,6 +10,10 @@
   box-shadow: none !important;
 }
 
+html {
+  color-scheme: light dark;
+}
+
 body {
   margin: 0;
   min-height: 100vh;
@@ -18,6 +22,41 @@ body {
   background-image: none;
   font-family: var(--font-primary);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Smooth dark ↔ light theme transitions (skip heavy media / viewers). */
+html.theme-animating,
+html.theme-animating body,
+html.theme-animating #root,
+html.theme-animating body *:not(img):not(svg):not(canvas):not(video):not(iframe):not(path):not(circle):not(rect):not(line):not(polyline):not(polygon) {
+  transition: var(--theme-transition) !important;
+}
+
+html.theme-animating .openseadragon-canvas,
+html.theme-animating .openseadragon-container,
+html.theme-animating canvas,
+html.theme-animating video,
+html.theme-animating img,
+html.theme-animating svg,
+html.theme-animating .radiology-workstation,
+html.theme-animating .slide-canvas,
+html.theme-animating [class*="osd-"] {
+  transition: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-animating,
+  html.theme-animating body,
+  html.theme-animating #root,
+  html.theme-animating body * {
+    transition: none !important;
+  }
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--theme-transition-duration);
+  animation-timing-function: var(--theme-transition-ease);
 }
 
 button {

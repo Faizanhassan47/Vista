@@ -382,6 +382,8 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   /** The nucleus the user last clicked, shown in the panel detail card. */
   const [aiSelectedNucleus, setAiSelectedNucleus] = useState(null);
   const [selectedMitoticCandidate, setSelectedMitoticCandidate] = useState(null);
+  const [selectedEvidenceFinding, setSelectedEvidenceFinding] = useState(null);
+  const [selectedFusionGroup, setSelectedFusionGroup] = useState(null);
   /** Screen-space tooltip position for nucleus hover. */
   const [nucleusTooltip, setNucleusTooltip] = useState(null);
   /** AI operates on the bounding rectangle of the selected annotation shape. */
@@ -1066,6 +1068,44 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
     }
   }, []);
 
+  const focusEvidenceFinding = useCallback((finding, focus) => {
+    setSelectedEvidenceFinding(finding || null);
+    if (!focus) return;
+    if (focus.point) {
+      focusMitoticCandidate({ center_level0: { x: focus.x, y: focus.y }, id: finding?.id });
+      return;
+    }
+    panToRoi(focus);
+  }, [focusMitoticCandidate, panToRoi]);
+
+  const renderEvidenceGeometry = (geometry, color = '#0f766e') => {
+    if (!geometry || !viewerReady) return null;
+    if (geometry.type === 'Point') {
+      const [x, y] = geometry.coordinates || [];
+      if (x == null || y == null) return null;
+      const pixel = imageToViewport(Number(x), Number(y));
+      return <circle cx={pixel.x} cy={pixel.y} r="8" fill={`${color}55`} stroke={color} strokeWidth="2" />;
+    }
+    const ring = geometry.type === 'Polygon'
+      ? geometry.coordinates?.[0]
+      : geometry.type === 'MultiPolygon'
+        ? geometry.coordinates?.[0]?.[0]
+        : null;
+    if (!Array.isArray(ring) || ring.length < 2) return null;
+    const pts = ring
+      .filter((pt) => Array.isArray(pt) && pt.length >= 2)
+      .map((pt) => imageToViewport(Number(pt[0]), Number(pt[1])));
+    if (!pts.length) return null;
+    return (
+      <polygon
+        points={pts.map((pt) => `${pt.x},${pt.y}`).join(' ')}
+        fill={`${color}33`}
+        stroke={color}
+        strokeWidth="2"
+      />
+    );
+  };
+
   async function saveNew(event) {
     event.preventDefault();
     setSaving(true);
@@ -1506,6 +1546,32 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
             ))}
             {renderResizeHandles()}
             {aiVisible && aiResults.map((result) => result.geometry && <g key={`ai-${result.id}`} className="ai-result-shape" onPointerEnter={() => showAnnotationMeasurement(aiMeasurementTarget(result))} onPointerLeave={() => setHoveredAnnotation(null)}><title>{`${result.model_name} ${result.model_version}${result.confidence == null ? '' : ` · ${(result.confidence * 100).toFixed(1)}%`}`}</title>{renderShape({ ...result.geometry, id: `ai-${result.id}` }, '#d39a3c', false)}</g>)}
+            {selectedFusionGroup?.geometry && (
+              <g className="fusion-group-shape" pointerEvents="none">
+                <title>{`${selectedFusionGroup.group_key || 'Fusion'} · ${selectedFusionGroup.classification}`}</title>
+                {renderEvidenceGeometry(
+                  selectedFusionGroup.geometry,
+                  selectedFusionGroup.classification?.includes('Conflict')
+                    ? '#b91c1c'
+                    : selectedFusionGroup.classification?.includes('QC')
+                      ? '#d97706'
+                      : selectedFusionGroup.classification === 'Agreement'
+                        ? '#0f766e'
+                        : '#0369a1',
+                )}
+                {(selectedFusionGroup.members || []).map((member) => (
+                  <g key={`fusion-member-${member.evidence_finding_id || member.id}`}>
+                    {renderEvidenceGeometry(member.geometry, '#334155')}
+                  </g>
+                ))}
+              </g>
+            )}
+            {selectedEvidenceFinding?.geometry && (
+              <g className="evidence-finding-shape" pointerEvents="none">
+                <title>{`${selectedEvidenceFinding.label || selectedEvidenceFinding.finding_type} · ${selectedEvidenceFinding.review_status}`}</title>
+                {renderEvidenceGeometry(selectedEvidenceFinding.geometry)}
+              </g>
+            )}
             {/* ── HoVer-Net nucleus contours ───────────────────────────────── */}
             {/* ── HoVer-Net AI Analyzed ROI Boundary ─────────────────────── */}
             {aiAnalysis?.roi && viewerReady && (() => {
@@ -1727,6 +1793,11 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
           onSelectMitoticCandidate={focusMitoticCandidate}
           selectedMitoticCandidate={selectedMitoticCandidate}
           onPanToRoi={panToRoi}
+          onFocusEvidenceFinding={focusEvidenceFinding}
+          onSelectEvidenceFinding={setSelectedEvidenceFinding}
+          selectedEvidenceFindingId={selectedEvidenceFinding?.id}
+          onSelectFusionGroup={setSelectedFusionGroup}
+          selectedFusionGroupId={selectedFusionGroup?.id}
           onError={onError}
         />}
         {inspectorTab === 'ai' && aiAnalysis?.feature_code === 'CAMELYON_TUMOR_DETECTION' && (

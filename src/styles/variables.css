@@ -95,6 +95,14 @@
   --admin-table-min-width: 560px;
   --admin-column-min-width: 280px;
   --transition-fast: 150ms ease;
+  --theme-transition-duration: 320ms;
+  --theme-transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --theme-transition: background-color var(--theme-transition-duration) var(--theme-transition-ease),
+    color var(--theme-transition-duration) var(--theme-transition-ease),
+    border-color var(--theme-transition-duration) var(--theme-transition-ease),
+    fill var(--theme-transition-duration) var(--theme-transition-ease),
+    stroke var(--theme-transition-duration) var(--theme-transition-ease),
+    box-shadow var(--theme-transition-duration) var(--theme-transition-ease);
   --active-press-offset: 1px;
   --focus-ring-width: 2px;
 

@@ -1,0 +1,130 @@
+.case-fusion-summary {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px 16px;
+}
+
+.case-fusion-summary__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.case-fusion-summary__head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.case-fusion-summary__head span {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-dim);
+  font-size: var(--font-size-xs);
+}
+
+.case-fusion-summary__head button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inner);
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.case-fusion-summary__disclaimer,
+.case-fusion-summary__error {
+  margin: 0;
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.case-fusion-summary__disclaimer {
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-left: 3px solid #d97706;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.08);
+  color: #92400e;
+}
+
+.case-fusion-summary__error {
+  color: #b91c1c;
+}
+
+.case-fusion-summary__totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.case-fusion-summary__totals div {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inner);
+}
+
+.case-fusion-summary__totals strong {
+  font-size: 0.95rem;
+}
+
+.case-fusion-summary__totals span {
+  color: var(--text-dim);
+  font-size: 0.68rem;
+}
+
+.case-fusion-summary__slides {
+  display: grid;
+  gap: 8px;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.case-fusion-summary__slides article {
+  display: grid;
+  gap: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--bg-canvas);
+}
+
+.case-fusion-summary__slides header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.case-fusion-summary__slides header button {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.case-fusion-summary__slides p,
+.case-fusion-summary__slides small {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--font-size-xs);
+}
+
+.case-fusion-summary__spin {
+  animation: case-fusion-spin 0.8s linear infinite;
+}
+
+@keyframes case-fusion-spin {
+  to { transform: rotate(360deg); }
+}

@@ -25,6 +25,7 @@ import { platformService } from '../../services/platformService';
 import { caseService } from '../../services/caseService';
 import { notifyClinicalDataChanged } from '../../services/clinicalDataEvents';
 import RegistrationWorkspace from '../registration/RegistrationWorkspace';
+import CaseFusionSummary from '../../components/CaseIntelligence/CaseFusionSummary';
 
 function apiErrorMessage(detail, fallback) {
   if (typeof detail === 'string' && detail.trim()) return detail;
@@ -63,7 +64,7 @@ export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
   const [branding, setBranding] = useState({ title: 'Digital Pathology Platform', subtitle: 'Digital Pathology Platform', logo: null, logoSize: '32', titleSize: '14', subtitleSize: '10', theme: 'dark', primaryColor: '#4a90c2', secondaryColor: '#087f8c' });
-  useEffect(() => { const controller = new AbortController(); platformService.branding(controller.signal).then((data) => { setBranding(data); document.documentElement.dataset.theme = data.theme || 'dark'; document.documentElement.style.setProperty('--brand-logo-size', `${data.logoSize || 32}px`); document.documentElement.style.setProperty('--brand-title-size', `${data.titleSize || 14}px`); document.documentElement.style.setProperty('--brand-subtitle-size', `${data.subtitleSize || 10}px`); document.documentElement.style.setProperty('--color-primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--sidebar-background', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--color-accent', data.secondaryColor || '#087f8c'); }).catch(() => { }); return () => controller.abort(); }, []);
+  useEffect(() => { const controller = new AbortController(); platformService.branding(controller.signal).then((data) => { setBranding(data); const savedTheme = localStorage.getItem('vista-theme'); document.documentElement.dataset.theme = savedTheme || data.theme || 'light'; document.documentElement.style.setProperty('--brand-logo-size', `${data.logoSize || 32}px`); document.documentElement.style.setProperty('--brand-title-size', `${data.titleSize || 14}px`); document.documentElement.style.setProperty('--brand-subtitle-size', `${data.subtitleSize || 10}px`); document.documentElement.style.setProperty('--color-primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--primary', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--sidebar-background', data.primaryColor || '#4a90c2'); document.documentElement.style.setProperty('--color-accent', data.secondaryColor || '#087f8c'); }).catch(() => { }); return () => controller.abort(); }, []);
   const [searchParams] = useSearchParams();
   const requestedPatientId = Number(searchParams.get('patient')) || null;
   const requestedCaseId = Number(searchParams.get('case')) || null;
@@ -762,7 +763,7 @@ export default function App() {
 
                 <aside className="case-inspector">
                   <div className="inspector-tabs" role="tablist" aria-label="Case details">
-                    {['review', 'timeline', 'links', 'report'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} className={inspectorTab === tab ? 'inspector-tab inspector-tab--active' : 'inspector-tab'} onClick={() => setInspectorTab(tab)}>{tab === 'review' ? 'Review & QC' : tab === 'links' ? 'Related Cases' : tab === 'timeline' ? 'Timeline' : 'Report'}</button>)}
+                    {['review', 'fusion', 'timeline', 'links', 'report'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={inspectorTab === tab} className={inspectorTab === tab ? 'inspector-tab inspector-tab--active' : 'inspector-tab'} onClick={() => setInspectorTab(tab)}>{tab === 'review' ? 'Review & QC' : tab === 'fusion' ? 'Case AI' : tab === 'links' ? 'Related Cases' : tab === 'timeline' ? 'Timeline' : 'Report'}</button>)}
                   </div>
                   {inspectorTab === 'review' && <section className="review-panel" key={`review-${selectedCase.id}`}>
                     <div className="review-panel-title"><ClipboardCheck size={17} /><div><h3>Case review</h3><span>Review status and recorded notes.</span></div></div>
@@ -772,6 +773,15 @@ export default function App() {
                     </>}
                     <div className="review-records"><details open><summary>Notes ({(selectedCase.review_notes || []).length})</summary>{(selectedCase.review_notes || []).map((note) => <article key={note.id}><strong>{note.author}</strong><p>{note.note}</p></article>)}</details></div>
                   </section>}
+                  {inspectorTab === 'fusion' && (
+                    <CaseFusionSummary
+                      selectedCase={selectedCase}
+                      onOpenSlide={(slideId) => {
+                        const slide = (selectedCase.slides || []).find((item) => item.id === slideId);
+                        if (slide) selectSlide(slide);
+                      }}
+                    />
+                  )}
                   {inspectorTab === 'timeline' && <section className="review-panel inspector-tab-content"><h3>Audit & Case Timeline</h3>{timelineLoading ? <p>Loading…</p> : caseTimelineEvents.map((evt, idx) => <div key={idx} className="timeline-item"><strong>{evt.summary}</strong><time>{formatDate(evt.event_at)}</time></div>)}</section>}
                   {inspectorTab === 'links' && <section className="review-panel inspector-tab-content"><h3>Related Cases</h3>{linksLoading ? <p>Loading…</p> : caseRelatedLinks.map((link) => <div key={link.id} className="link-item"><strong>Case #{link.related_case_id}</strong></div>)}</section>}
                   {inspectorTab === 'report' && <ReportEditor selectedCase={selectedCase} selectSlide={selectSlide} setMessage={reportMessage} onReportFinalized={refresh} />}

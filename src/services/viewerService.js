@@ -25,6 +25,34 @@ export const viewerService = {
     method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(calibration),
   }),
   aiResults: (slideId, signal) => request(`${platformRoot}/ai/slides/${slideId}/results`, { signal }),
+
+  // ── AI Evidence Map (Phase 1) ────────────────────────────────────────────
+  getEvidenceFindings: (slideId, params = {}, signal) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value != null && value !== '') qs.set(key, String(value));
+    });
+    const query = qs.toString();
+    return request(`${apiRoot}/slides/${slideId}/ai/evidence${query ? `?${query}` : ''}`, { signal });
+  },
+  projectEvidence: (slideId) => request(`${apiRoot}/slides/${slideId}/ai/evidence/project`, { method: 'POST' }),
+  getEvidenceFinding: (findingId, signal) => request(`${apiRoot}/ai/evidence/${findingId}`, { signal }),
+  getEvidenceHistory: (findingId, signal) => request(`${apiRoot}/ai/evidence/${findingId}/history`, { signal }),
+  reviewEvidenceFinding: (findingId, payload) => request(`${apiRoot}/ai/evidence/${findingId}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }),
+
+  // ── AI Fusion v1 (Phase 2) ───────────────────────────────────────────────
+  listFusionRuns: (slideId, signal) => request(`${apiRoot}/slides/${slideId}/ai/fusion/runs`, { signal }),
+  runFusion: (slideId, payload = {}) => request(`${apiRoot}/slides/${slideId}/ai/fusion/runs`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  }),
+  getFusionRun: (runId, signal) => request(`${apiRoot}/ai/fusion/runs/${runId}`, { signal }),
+  getFusionGroup: (groupId, signal) => request(`${apiRoot}/ai/fusion/groups/${groupId}`, { signal }),
   bookmarks: (slideId, signal) => request(`${platformRoot}/slides/${slideId}/bookmarks`, { signal }),
   preferences: (slideId, signal) => request(`${platformRoot}/slides/${slideId}/viewer-preferences`, { signal }),
   savePreferences: (slideId, settings, signal) => request(`${platformRoot}/slides/${slideId}/viewer-preferences`, {
