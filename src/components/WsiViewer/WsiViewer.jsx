@@ -383,7 +383,6 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
   const [aiSelectedNucleus, setAiSelectedNucleus] = useState(null);
   const [selectedMitoticCandidate, setSelectedMitoticCandidate] = useState(null);
   const [selectedEvidenceFinding, setSelectedEvidenceFinding] = useState(null);
-  const [selectedFusionGroup, setSelectedFusionGroup] = useState(null);
   /** Screen-space tooltip position for nucleus hover. */
   const [nucleusTooltip, setNucleusTooltip] = useState(null);
   /** AI operates on the bounding rectangle of the selected annotation shape. */
@@ -1546,26 +1545,6 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
             ))}
             {renderResizeHandles()}
             {aiVisible && aiResults.map((result) => result.geometry && <g key={`ai-${result.id}`} className="ai-result-shape" onPointerEnter={() => showAnnotationMeasurement(aiMeasurementTarget(result))} onPointerLeave={() => setHoveredAnnotation(null)}><title>{`${result.model_name} ${result.model_version}${result.confidence == null ? '' : ` · ${(result.confidence * 100).toFixed(1)}%`}`}</title>{renderShape({ ...result.geometry, id: `ai-${result.id}` }, '#d39a3c', false)}</g>)}
-            {selectedFusionGroup?.geometry && (
-              <g className="fusion-group-shape" pointerEvents="none">
-                <title>{`${selectedFusionGroup.group_key || 'Fusion'} · ${selectedFusionGroup.classification}`}</title>
-                {renderEvidenceGeometry(
-                  selectedFusionGroup.geometry,
-                  selectedFusionGroup.classification?.includes('Conflict')
-                    ? '#b91c1c'
-                    : selectedFusionGroup.classification?.includes('QC')
-                      ? '#d97706'
-                      : selectedFusionGroup.classification === 'Agreement'
-                        ? '#0f766e'
-                        : '#0369a1',
-                )}
-                {(selectedFusionGroup.members || []).map((member) => (
-                  <g key={`fusion-member-${member.evidence_finding_id || member.id}`}>
-                    {renderEvidenceGeometry(member.geometry, '#334155')}
-                  </g>
-                ))}
-              </g>
-            )}
             {selectedEvidenceFinding?.geometry && (
               <g className="evidence-finding-shape" pointerEvents="none">
                 <title>{`${selectedEvidenceFinding.label || selectedEvidenceFinding.finding_type} · ${selectedEvidenceFinding.review_status}`}</title>
@@ -1796,8 +1775,6 @@ export default function WsiViewer({ slide, onError, syncViews, syncedViewerRef, 
           onFocusEvidenceFinding={focusEvidenceFinding}
           onSelectEvidenceFinding={setSelectedEvidenceFinding}
           selectedEvidenceFindingId={selectedEvidenceFinding?.id}
-          onSelectFusionGroup={setSelectedFusionGroup}
-          selectedFusionGroupId={selectedFusionGroup?.id}
           onError={onError}
         />}
         {inspectorTab === 'ai' && aiAnalysis?.feature_code === 'CAMELYON_TUMOR_DETECTION' && (

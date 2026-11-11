@@ -44,15 +44,6 @@ export const viewerService = {
     body: JSON.stringify(payload),
   }),
 
-  // ── AI Fusion v1 (Phase 2) ───────────────────────────────────────────────
-  listFusionRuns: (slideId, signal) => request(`${apiRoot}/slides/${slideId}/ai/fusion/runs`, { signal }),
-  runFusion: (slideId, payload = {}) => request(`${apiRoot}/slides/${slideId}/ai/fusion/runs`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }),
-  getFusionRun: (runId, signal) => request(`${apiRoot}/ai/fusion/runs/${runId}`, { signal }),
-  getFusionGroup: (groupId, signal) => request(`${apiRoot}/ai/fusion/groups/${groupId}`, { signal }),
   bookmarks: (slideId, signal) => request(`${platformRoot}/slides/${slideId}/bookmarks`, { signal }),
   preferences: (slideId, signal) => request(`${platformRoot}/slides/${slideId}/viewer-preferences`, { signal }),
   savePreferences: (slideId, settings, signal) => request(`${platformRoot}/slides/${slideId}/viewer-preferences`, {

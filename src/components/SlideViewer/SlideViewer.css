@@ -508,6 +508,67 @@
   color: #f07178;
 }
 
+.hu-tissue-ref {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid #2a343b;
+  background: #0d1216;
+}
+
+.hu-tissue-ref__head,
+.hu-tissue-ref__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  text-align: left;
+  font: inherit;
+  border: 0;
+  border-bottom: 1px solid #1c242b;
+}
+
+.hu-tissue-ref__head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #161d23;
+  color: #9aa7b0;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.hu-tissue-ref__row {
+  background: transparent;
+  color: #d7e0e6;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  cursor: pointer;
+}
+
+.hu-tissue-ref__row:hover {
+  background: #1a232a;
+}
+
+.hu-tissue-ref__row.is-active {
+  background: #243039;
+  color: #fff;
+}
+
+.hu-tissue-ref__row span:last-child {
+  font-variant-numeric: tabular-nums;
+  color: #9ec5d8;
+}
+
+.hu-tissue-ref__row.is-active span:last-child {
+  color: #c9e7f5;
+}
+
 .imaging-dims {
   margin: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
