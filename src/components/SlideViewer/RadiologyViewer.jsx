@@ -2,17 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { Box, Columns2, Hand, Maximize2, RotateCcw, Scan, SunMedium, ZoomIn, ZoomOut } from 'lucide-react';
 import MedicalVolume3DViewer from './MedicalVolume3DViewer';
 import RadiologyMprViewer from './RadiologyMprViewer';
+import { findHuTissuePreset, HU_TISSUE_PRESETS } from './huTissuePresets';
 import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 
 const PRESETS = {
   CT: { Lung: [-600, 1500], 'Soft tissue': [40, 400], Bone: [300, 1500] },
-};
-const HU_PRESETS = {
-  'Air / lung attenuation': [-1000, -500],
-  'Fat attenuation': [-190, -30],
-  'Soft-tissue attenuation': [20, 100],
-  'Dense material': [300, 1500],
 };
 const INTENSITY_PRESETS = {
   'Lower third': 'lower',
@@ -67,6 +62,7 @@ export default function RadiologyViewer({ slide, onError }) {
   const [huMask, setHuMask] = useState('');
   const [huStats, setHuStats] = useState(null);
   const [huError, setHuError] = useState('');
+  const [huTissueId, setHuTissueId] = useState('air');
   const [appliedThreshold, setAppliedThreshold] = useState(null);
   const thresholdReq = useRef(0);
 
@@ -89,9 +85,12 @@ export default function RadiologyViewer({ slide, onError }) {
         setTool(axialCount > 1 ? 'stack' : 'zoom');
         const supportsHu = Boolean(body.calibration?.hu_threshold_supported);
         if (supportsHu) {
-          setHuMin('-1000');
-          setHuMax('-500');
+          const air = findHuTissuePreset('air');
+          setHuTissueId('air');
+          setHuMin(String(air.min));
+          setHuMax(String(air.max));
         } else {
+          setHuTissueId('');
           setHuMin('0');
           setHuMax('100');
         }
@@ -163,6 +162,7 @@ export default function RadiologyViewer({ slide, onError }) {
   const isVolume = slide.file_type === 'nifti' && Boolean(meta?.plane_counts);
   const mprSupported = isVolume;
   const unitLabel = huSupported ? 'HU' : 'intensity';
+  const selectedTissue = findHuTissuePreset(huTissueId);
   const markers = isVolume ? PLANE_MARKERS[plane] : null;
   const windowLabel = preset || (wlCenter != null && wlWidth != null ? `${Math.round(wlCenter)} / ${Math.round(wlWidth)}` : 'Auto');
   const volumeDepth = meta?.plane_counts?.axial || meta?.level_count || meta?.instance_count;
@@ -559,49 +559,110 @@ export default function RadiologyViewer({ slide, onError }) {
                     <input type="checkbox" checked={huVisible} onChange={(event) => setHuVisible(event.target.checked)} />
                     Show overlay
                   </label>
-                  <label>Preset
-                    <select
-                      defaultValue="Custom"
-                      onChange={(event) => {
-                        if (huSupported) {
-                          const range = HU_PRESETS[event.target.value];
-                          if (range) {
-                            setHuMin(String(range[0]));
-                            setHuMax(String(range[1]));
+                  {huSupported ? (
+                    <>
+                      <label>Material / tissue
+                        <select
+                          value={huTissueId || 'custom'}
+                          onChange={(event) => {
+                            const id = event.target.value;
+                            if (id === 'custom') {
+                              setHuTissueId('');
+                              return;
+                            }
+                            const tissue = findHuTissuePreset(id);
+                            if (!tissue) return;
+                            setHuTissueId(id);
+                            setHuMin(String(tissue.min));
+                            setHuMax(String(tissue.max));
+                          }}
+                        >
+                          <option value="custom">Custom</option>
+                          {HU_TISSUE_PRESETS.map((tissue) => (
+                            <option key={tissue.id} value={tissue.id}>
+                              {tissue.label} ({tissue.rangeLabel} HU)
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="hu-tissue-ref" role="table" aria-label="Standard HU ranges">
+                        <div className="hu-tissue-ref__head" role="row">
+                          <span role="columnheader">Material / tissue</span>
+                          <span role="columnheader">HU range</span>
+                        </div>
+                        {HU_TISSUE_PRESETS.map((tissue) => (
+                          <button
+                            key={tissue.id}
+                            type="button"
+                            role="row"
+                            className={`hu-tissue-ref__row${huTissueId === tissue.id ? ' is-active' : ''}`}
+                            onClick={() => {
+                              setHuTissueId(tissue.id);
+                              setHuMin(String(tissue.min));
+                              setHuMax(String(tissue.max));
+                            }}
+                          >
+                            <span role="cell">{tissue.label}</span>
+                            <span role="cell">{tissue.rangeLabel}</span>
+                          </button>
+                        ))}
+                      </div>
+                      {selectedTissue && (
+                        <p className="imaging-note">{selectedTissue.use}</p>
+                      )}
+                    </>
+                  ) : (
+                    <label>Preset
+                      <select
+                        defaultValue="Custom"
+                        onChange={(event) => {
+                          const kind = INTENSITY_PRESETS[event.target.value];
+                          const stats = huStats;
+                          const vmin = Number(stats?.valueMin);
+                          const vmax = Number(stats?.valueMax);
+                          if (!kind || !Number.isFinite(vmin) || !Number.isFinite(vmax) || vmax <= vmin) return;
+                          const span = vmax - vmin;
+                          if (kind === 'lower') {
+                            setHuMin(String(Math.round(vmin)));
+                            setHuMax(String(Math.round(vmin + span / 3)));
+                          } else if (kind === 'upper') {
+                            setHuMin(String(Math.round(vmax - span / 3)));
+                            setHuMax(String(Math.round(vmax)));
+                          } else {
+                            setHuMin(String(Math.round(vmin + span / 3)));
+                            setHuMax(String(Math.round(vmax - span / 3)));
                           }
-                          return;
-                        }
-                        const kind = INTENSITY_PRESETS[event.target.value];
-                        const stats = huStats;
-                        // Prefer last mask value range; otherwise leave custom for Apply after user edits.
-                        const vmin = Number(stats?.valueMin);
-                        const vmax = Number(stats?.valueMax);
-                        if (!kind || !Number.isFinite(vmin) || !Number.isFinite(vmax) || vmax <= vmin) return;
-                        const span = vmax - vmin;
-                        if (kind === 'lower') {
-                          setHuMin(String(Math.round(vmin)));
-                          setHuMax(String(Math.round(vmin + span / 3)));
-                        } else if (kind === 'upper') {
-                          setHuMin(String(Math.round(vmax - span / 3)));
-                          setHuMax(String(Math.round(vmax)));
-                        } else {
-                          setHuMin(String(Math.round(vmin + span / 3)));
-                          setHuMax(String(Math.round(vmax - span / 3)));
-                        }
-                      }}
-                    >
-                      <option value="Custom">Custom</option>
-                      {Object.keys(huSupported ? HU_PRESETS : INTENSITY_PRESETS).map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  </label>
+                        }}
+                      >
+                        <option value="Custom">Custom</option>
+                        {Object.keys(INTENSITY_PRESETS).map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <div className="imaging-pair">
                     <label>Minimum {unitLabel}
-                      <input type="text" inputMode="decimal" value={huMin} onChange={(event) => setHuMin(event.target.value)} />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={huMin}
+                        onChange={(event) => {
+                          setHuTissueId('');
+                          setHuMin(event.target.value);
+                        }}
+                      />
                     </label>
                     <label>Maximum {unitLabel}
-                      <input type="text" inputMode="decimal" value={huMax} onChange={(event) => setHuMax(event.target.value)} />
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={huMax}
+                        onChange={(event) => {
+                          setHuTissueId('');
+                          setHuMax(event.target.value);
+                        }}
+                      />
                     </label>
                   </div>
                   <label>Color

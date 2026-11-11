@@ -1,5 +1,5 @@
 /**
- * Evidence Map panel — Phase 1 review UI for normalized AI findings.
+ * Evidence Map panel — review UI for normalized AI findings.
  * Original model outputs remain immutable; scores are labelled uncalibrated.
  */
 
@@ -47,23 +47,11 @@ function fmtScore(score) {
   return Number(score).toFixed(3);
 }
 
-const FUSION_COLORS = {
-  Agreement: '#0f766e',
-  AgreementQC: '#0e7490',
-  Conflict: '#b91c1c',
-  ConflictQC: '#9f1239',
-  QCAffected: '#d97706',
-  Related: '#0369a1',
-  Singleton: '#64748b',
-};
-
 export default function EvidenceMapPanel({
   slide,
   onFocusFinding,
   onSelectFinding,
   selectedFindingId,
-  onSelectFusionGroup,
-  selectedFusionGroupId,
   refreshKey = 0,
 }) {
   const [open, setOpen] = useState(true);
@@ -79,10 +67,6 @@ export default function EvidenceMapPanel({
   const [history, setHistory] = useState([]);
   const [reason, setReason] = useState('');
   const [busyAction, setBusyAction] = useState('');
-  const [fusionRuns, setFusionRuns] = useState([]);
-  const [fusionRun, setFusionRun] = useState(null);
-  const [selectedGroup, setSelectedGroup] = useState(null);
-  const [fusing, setFusing] = useState(false);
 
   const load = useCallback(async (signal) => {
     if (!slide?.id) return;
@@ -105,32 +89,11 @@ export default function EvidenceMapPanel({
     }
   }, [slide?.id, filterType, filterStatus]);
 
-  const loadFusionRuns = useCallback(async (signal) => {
-    if (!slide?.id) return;
-    try {
-      const data = await viewerService.listFusionRuns(slide.id, signal);
-      if (signal?.aborted) return;
-      const runs = Array.isArray(data?.runs) ? data.runs : [];
-      setFusionRuns(runs);
-      if (runs[0]?.id) {
-        const detail = await viewerService.getFusionRun(runs[0].id, signal);
-        if (!signal?.aborted) setFusionRun(detail);
-      } else {
-        setFusionRun(null);
-      }
-    } catch (err) {
-      if (err.name !== 'AbortError') {
-        /* Fusion optional until first run */
-      }
-    }
-  }, [slide?.id]);
-
   useEffect(() => {
     const controller = new AbortController();
     load(controller.signal);
-    loadFusionRuns(controller.signal);
     return () => controller.abort();
-  }, [load, loadFusionRuns, refreshKey]);
+  }, [load, refreshKey]);
 
   const selectFinding = useCallback(async (finding) => {
     setSelected(finding);
@@ -167,63 +130,6 @@ export default function EvidenceMapPanel({
       setProjecting(false);
     }
   };
-
-  const runFusion = async () => {
-    setFusing(true);
-    setError('');
-    try {
-      const run = await viewerService.runFusion(slide.id, {});
-      setFusionRun(run);
-      setFusionRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
-      setSelectedGroup(null);
-      onSelectFusionGroup?.(null);
-    } catch (err) {
-      setError(err.message || 'Fusion failed');
-    } finally {
-      setFusing(false);
-    }
-  };
-
-  const openFusionRun = async (runId) => {
-    if (!runId) {
-      setFusionRun(null);
-      setSelectedGroup(null);
-      onSelectFusionGroup?.(null);
-      return;
-    }
-    try {
-      const detail = await viewerService.getFusionRun(runId);
-      setFusionRun(detail);
-      setSelectedGroup(null);
-      onSelectFusionGroup?.(null);
-    } catch (err) {
-      setError(err.message || 'Could not load fusion run');
-    }
-  };
-
-  const selectGroup = async (group) => {
-    setSelectedGroup(group);
-    onSelectFusionGroup?.(group);
-    const focus = geometryFocus(group.geometry);
-    if (focus) onFocusFinding?.(null, focus);
-    if (group?.id) {
-      try {
-        const detail = await viewerService.getFusionGroup(group.id);
-        setSelectedGroup(detail);
-        onSelectFusionGroup?.(detail);
-      } catch (err) {
-        setError(err.message || 'Could not load fusion group');
-      }
-    }
-  };
-
-  useEffect(() => {
-    if (selectedFusionGroupId == null) return;
-    const match = (fusionRun?.groups || []).find((group) => group.id === selectedFusionGroupId);
-    if (match && selectedGroup?.id !== selectedFusionGroupId) {
-      setSelectedGroup(match);
-    }
-  }, [selectedFusionGroupId, fusionRun, selectedGroup?.id]);
 
   const submitReview = async (action) => {
     if (!selected?.id) return;
@@ -294,96 +200,6 @@ export default function EvidenceMapPanel({
             <button type="button" className="evidence-map__text-btn" onClick={project} disabled={projecting}>
               {projecting ? 'Projecting…' : 'Project existing'}
             </button>
-            <button type="button" className="evidence-map__text-btn" onClick={runFusion} disabled={fusing || !total}>
-              {fusing ? 'Running Fusion…' : 'Run Fusion'}
-            </button>
-          </div>
-
-          <div className="evidence-map__fusion">
-            <div className="evidence-map__fusion-head">
-              <strong>AI Fusion v1</strong>
-              <span>Spatial correlation · no combined diagnostic score</span>
-            </div>
-            {fusionRuns.length > 0 && (
-              <label>
-                Fusion run
-                <select
-                  value={fusionRun?.id || ''}
-                  onChange={(event) => openFusionRun(Number(event.target.value) || null)}
-                >
-                  {fusionRuns.map((run) => (
-                    <option key={run.id} value={run.id}>
-                      #{run.id} · {run.group_count} groups · {run.created_at ? new Date(run.created_at).toLocaleString() : 'completed'}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {fusionRun?.summary?.by_classification && (
-              <div className="evidence-map__summary">
-                {Object.entries(fusionRun.summary.by_classification).map(([name, count]) => (
-                  <span key={name} style={{ borderLeft: `3px solid ${FUSION_COLORS[name] || '#64748b'}` }}>
-                    {name}: {count}
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="evidence-map__list evidence-map__list--fusion">
-              {(fusionRun?.groups || []).map((group) => {
-                const active = selectedGroup?.id === group.id;
-                return (
-                  <button
-                    type="button"
-                    key={group.id || group.group_key}
-                    className={`evidence-map__item${active ? ' evidence-map__item--active' : ''}`}
-                    onClick={() => selectGroup(group)}
-                  >
-                    <strong style={{ color: FUSION_COLORS[group.classification] || undefined }}>
-                      {group.group_key} · {group.classification}
-                    </strong>
-                    <small>{group.member_count || group.members?.length || 0} findings · source scores preserved</small>
-                  </button>
-                );
-              })}
-              {fusionRun && !(fusionRun.groups || []).length && (
-                <p className="evidence-map__empty">This fusion run has no spatial groups.</p>
-              )}
-            </div>
-            {selectedGroup && (
-              <div className="evidence-map__detail">
-                <h4>{selectedGroup.group_key} · {selectedGroup.classification}</h4>
-                <p className="evidence-map__empty">
-                  Why: {(selectedGroup.why?.rationale || selectedGroup.rationale?.rationale || []).join(' ') || 'No rationale recorded.'}
-                </p>
-                <dl>
-                  <div><dt>Uncertainty</dt><dd>{selectedGroup.uncertainty?.note || selectedGroup.rationale?.uncertainty?.note}</dd></div>
-                  <div><dt>Combined diagnostic confidence</dt><dd>Not produced</dd></div>
-                </dl>
-                <div className="evidence-map__list">
-                  {(selectedGroup.members || []).map((member) => (
-                    <button
-                      type="button"
-                      key={member.evidence_finding_id || member.id}
-                      className="evidence-map__item"
-                      onClick={() => {
-                        const findingId = member.evidence_finding_id || member.id;
-                        const match = items.find((item) => item.id === findingId);
-                        if (match) selectFinding(match);
-                        else selectFinding({ id: findingId, geometry: member.geometry, label: member.label, finding_type: member.finding_type });
-                      }}
-                    >
-                      <strong>{member.label || member.finding_type}</strong>
-                      <small>
-                        {member.finding_type} · {member.model_name} {member.model_version} · {member.review_status}
-                      </small>
-                      <small>
-                        score {fmtScore(member.score)} ({member.score_calibration_status || 'uncalibrated'})
-                      </small>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
 
           {summary.length > 0 && (

@@ -250,8 +250,6 @@ export default function AiAnalysisPanel({
   onFocusEvidenceFinding,
   onSelectEvidenceFinding,
   selectedEvidenceFindingId,
-  onSelectFusionGroup,
-  selectedFusionGroupId,
 }) {
   const [open, setOpen] = useState(true);
   const [entitlements, setEntitlements] = useState(null);
@@ -855,8 +853,6 @@ export default function AiAnalysisPanel({
             selectedFindingId={selectedEvidenceFindingId}
             onFocusFinding={onFocusEvidenceFinding}
             onSelectFinding={onSelectEvidenceFinding}
-            onSelectFusionGroup={onSelectFusionGroup}
-            selectedFusionGroupId={selectedFusionGroupId}
           />
 
           <div className="ai-feature-selector">

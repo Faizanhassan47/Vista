@@ -9,14 +9,10 @@ async function request(path, options = {}) {
 }
 
 export const caseIntelligenceService = {
-  fusionSummary: (caseId, signal) => request(`/api/cases/${caseId}/ai/fusion/summary`, { signal }),
   reportEvidence: (caseId, signal) => request(`/api/cases/${caseId}/ai/report-evidence`, { signal }),
   buildReportDraft: (caseId, payload = {}) => request(`/api/cases/${caseId}/ai-report-draft`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   }),
-  compareFusionRuns: (fromRunId, toRunId, signal) => (
-    request(`/api/ai/fusion/runs/${fromRunId}/compare/${toRunId}`, { signal })
-  ),
 };
