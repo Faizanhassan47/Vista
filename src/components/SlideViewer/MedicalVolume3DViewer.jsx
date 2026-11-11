@@ -213,23 +213,63 @@ function applyTransfer(property, color, opacity, preset, hu, range, spacing, sha
   configureVolumeLook(property, spacing, { shaded });
 }
 
-function applyThresholdTransfer(property, color, opacity, low, high, colorName, opacityPct, spacing) {
+function applyThresholdTransfer(property, color, opacity, low, high, colorName, opacityPct, spacing, dataRange) {
   const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
-  const peak = Math.max(0.02, Math.min(0.75, opacityPct / 100));
-  const pad = Math.max(1, (high - low) * 0.02);
+  const peak = Math.max(0.05, Math.min(0.9, opacityPct / 100));
+  const span = Math.max(1e-3, high - low);
+  const pad = Math.max(span * 0.02, Number.isFinite(dataRange?.span) ? dataRange.span * 0.001 : 1);
+  const floor = Number.isFinite(dataRange?.min) ? dataRange.min - pad : low - pad * 4;
+  const ceil = Number.isFinite(dataRange?.max) ? dataRange.max + pad : high + pad * 4;
   color.removeAllPoints();
   opacity.removeAllPoints();
-  color.addRGBPoint(low - pad, rgb[0] * 0.2, rgb[1] * 0.2, rgb[2] * 0.2);
+  // Anchor outside the data range so VTK clamping keeps everything else transparent.
+  color.addRGBPoint(floor, rgb[0] * 0.15, rgb[1] * 0.15, rgb[2] * 0.15);
+  color.addRGBPoint(low - pad, rgb[0] * 0.25, rgb[1] * 0.25, rgb[2] * 0.25);
   color.addRGBPoint(low, ...rgb);
   color.addRGBPoint((low + high) / 2, ...rgb);
   color.addRGBPoint(high, ...rgb);
-  color.addRGBPoint(high + pad, rgb[0] * 0.2, rgb[1] * 0.2, rgb[2] * 0.2);
+  color.addRGBPoint(high + pad, rgb[0] * 0.25, rgb[1] * 0.25, rgb[2] * 0.25);
+  color.addRGBPoint(ceil, rgb[0] * 0.15, rgb[1] * 0.15, rgb[2] * 0.15);
+  opacity.addPoint(floor, 0);
   opacity.addPoint(low - pad, 0);
-  opacity.addPoint(low, peak * 0.55);
+  opacity.addPoint(low, peak * 0.7);
   opacity.addPoint((low + high) / 2, peak);
-  opacity.addPoint(high, peak * 0.55);
+  opacity.addPoint(high, peak * 0.7);
   opacity.addPoint(high + pad, 0);
-  configureVolumeLook(property, spacing, { shaded: true });
+  opacity.addPoint(ceil, 0);
+  // Threshold bands must stay visible on flat interiors; gradient opacity hides air/soft tissue.
+  property.setInterpolationTypeToLinear();
+  property.setShade(false);
+  property.setAmbient(0.55);
+  property.setDiffuse(0.45);
+  property.setSpecular(0);
+  if (property.setUseGradientOpacity) property.setUseGradientOpacity(0, false);
+  const distance = Math.min(...(spacing || [1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
+  property.setScalarOpacityUnitDistance(0, distance * 0.35);
+  property.modified();
+}
+
+function volumeDataRange(range) {
+  const all = range?.all;
+  if (!all) return null;
+  const min = Math.min(all.p05, all.p25, all.p50);
+  const max = Math.max(all.p50, all.p95, all.p99);
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return null;
+  return { min, max, span: Math.max(1e-3, max - min), foreground: range.foreground || all };
+}
+
+function intensityPresetRange(kind, range) {
+  const data = volumeDataRange(range);
+  if (!data) return null;
+  const { min, max, span, foreground } = data;
+  if (kind === 'lower') return [min, min + span / 3];
+  if (kind === 'upper') return [max - span / 3, max];
+  if (kind === 'bright') {
+    const low = foreground?.p75 ?? (min + span * 0.66);
+    const high = foreground?.p99 ?? max;
+    return [low, high];
+  }
+  return [min + span / 3, max - span / 3];
 }
 
 async function fetchVolume(slideId, quality, signal) {
@@ -475,6 +515,16 @@ export default function MedicalVolume3DViewer({
         setDimensions(payload.dims.join(' × '));
         setPreview(payload.reduced);
         setStatus('');
+        if (!hu) {
+          const mid = intensityPresetRange('mid', payload.range);
+          if (mid) {
+            setHuMin(String(Math.round(mid[0])));
+            setHuMax(String(Math.round(mid[1])));
+          }
+        } else {
+          setHuMin('-1000');
+          setHuMax('-500');
+        }
         current.view.resize();
         current.view.getRenderWindow().render();
         requestAnimationFrame(() => {
@@ -545,6 +595,7 @@ export default function MedicalVolume3DViewer({
   function paintThreshold(low, high, colorName, opacityPct) {
     const current = scene.current;
     if (!current) return;
+    const dataRange = volumeDataRange(current.range);
     applyThresholdTransfer(
       current.actor.getProperty(),
       current.color,
@@ -554,6 +605,7 @@ export default function MedicalVolume3DViewer({
       colorName,
       opacityPct,
       current.spacing,
+      dataRange,
     );
     const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
     ensureSurface((low + high) / 2);
@@ -606,6 +658,13 @@ export default function MedicalVolume3DViewer({
     }
     if (!scene.current?.image) {
       setHuError('Volume is still loading.');
+      return;
+    }
+    const dataRange = volumeDataRange(scene.current.range);
+    if (dataRange && (high < dataRange.min || low > dataRange.max)) {
+      setHuError(
+        `No overlap with this volume’s intensities (~${Math.round(dataRange.min)}–${Math.round(dataRange.max)}). Adjust the range.`,
+      );
       return;
     }
     setThresholdOn(true);
@@ -744,15 +803,31 @@ export default function MedicalVolume3DViewer({
               <select
                 defaultValue="Custom"
                 onChange={(event) => {
-                  const range = HU_PRESETS[event.target.value];
-                  if (range) {
-                    setHuMin(String(range[0]));
-                    setHuMax(String(range[1]));
+                  if (hu) {
+                    const range = HU_PRESETS[event.target.value];
+                    if (range) {
+                      setHuMin(String(range[0]));
+                      setHuMax(String(range[1]));
+                    }
+                    return;
+                  }
+                  const map = {
+                    'Lower third': 'lower',
+                    'Mid intensities': 'mid',
+                    'Bright / upper': 'bright',
+                  };
+                  const next = intensityPresetRange(map[event.target.value], scene.current?.range);
+                  if (next) {
+                    setHuMin(String(Math.round(next[0])));
+                    setHuMax(String(Math.round(next[1])));
                   }
                 }}
               >
                 <option value="Custom">Custom</option>
-                {Object.keys(HU_PRESETS).map((name) => <option key={name} value={name}>{name}</option>)}
+                {(hu
+                  ? Object.keys(HU_PRESETS)
+                  : ['Lower third', 'Mid intensities', 'Bright / upper']
+                ).map((name) => <option key={name} value={name}>{name}</option>)}
               </select>
             </label>
             <div className="imaging-pair">

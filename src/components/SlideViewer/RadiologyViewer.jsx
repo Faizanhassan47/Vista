@@ -14,6 +14,11 @@ const HU_PRESETS = {
   'Soft-tissue attenuation': [20, 100],
   'Dense material': [300, 1500],
 };
+const INTENSITY_PRESETS = {
+  'Lower third': 'lower',
+  'Mid intensities': 'mid',
+  'Upper third': 'upper',
+};
 const MIN_SCALE = 0.25;
 const MAX_SCALE = 8;
 const PLANE_MARKERS = {
@@ -62,6 +67,8 @@ export default function RadiologyViewer({ slide, onError }) {
   const [huMask, setHuMask] = useState('');
   const [huStats, setHuStats] = useState(null);
   const [huError, setHuError] = useState('');
+  const [appliedThreshold, setAppliedThreshold] = useState(null);
+  const thresholdReq = useRef(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -80,6 +87,14 @@ export default function RadiologyViewer({ slide, onError }) {
           setIndex(Math.floor((axialCount - 1) / 2));
         }
         setTool(axialCount > 1 ? 'stack' : 'zoom');
+        const supportsHu = Boolean(body.calibration?.hu_threshold_supported);
+        if (supportsHu) {
+          setHuMin('-1000');
+          setHuMax('-500');
+        } else {
+          setHuMin('0');
+          setHuMax('100');
+        }
       })
       .catch((error) => { if (error.name !== 'AbortError') onError?.(error.message); });
     return () => controller.abort();
@@ -112,7 +127,12 @@ export default function RadiologyViewer({ slide, onError }) {
 
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
   useEffect(() => () => { if (huMask) URL.revokeObjectURL(huMask); }, [huMask]);
-  useEffect(() => { setHuMask(''); setHuStats(null); setHuError(''); }, [index, slide.id, plane]);
+  useEffect(() => {
+    setHuMask('');
+    setHuStats(null);
+    setHuError('');
+    setAppliedThreshold(null);
+  }, [slide.id]);
   useEffect(() => { setNatural({ w: 0, h: 0 }); setFitSize({ w: 0, h: 0 }); }, [url]);
   useEffect(() => () => { if (wlTimer.current) window.clearTimeout(wlTimer.current); }, []);
 
@@ -142,7 +162,7 @@ export default function RadiologyViewer({ slide, onError }) {
   const isCt = huSupported || String(meta?.modality || '').includes('CT');
   const isVolume = slide.file_type === 'nifti' && Boolean(meta?.plane_counts);
   const mprSupported = isVolume;
-  const unitLabel = huSupported || (!isVolume && isCt) ? 'HU' : 'intensity';
+  const unitLabel = huSupported ? 'HU' : 'intensity';
   const markers = isVolume ? PLANE_MARKERS[plane] : null;
   const windowLabel = preset || (wlCenter != null && wlWidth != null ? `${Math.round(wlCenter)} / ${Math.round(wlWidth)}` : 'Auto');
   const volumeDepth = meta?.plane_counts?.axial || meta?.level_count || meta?.instance_count;
@@ -250,6 +270,37 @@ export default function RadiologyViewer({ slide, onError }) {
     wlDrag.current = null;
   }
 
+  async function fetchThresholdMask(sliceIndex, planeName, low, high, color, signal) {
+    const params = new URLSearchParams({
+      index: String(sliceIndex),
+      min_hu: String(low),
+      max_hu: String(high),
+      color,
+      plane: planeName,
+      scale: huSupported ? 'hu' : 'native',
+    });
+    const response = await apiFetch(`${API_BASE_URL}/api/slides/${slide.id}/radiology/hu-mask?${params}`, { signal });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      const detail = typeof body.detail === 'string' ? body.detail : '';
+      throw new Error(detail || 'Threshold is not available for this image');
+    }
+    const blob = await response.blob();
+    return {
+      url: URL.createObjectURL(blob),
+      stats: {
+        matching: Number(response.headers.get('X-Matching-Pixels') || 0),
+        eligible: Number(response.headers.get('X-Eligible-Pixels') || 0),
+        percentage: response.headers.get('X-Percentage') || '0',
+        width: response.headers.get('X-Width'),
+        height: response.headers.get('X-Height'),
+        unit: response.headers.get('X-Unit') || (huSupported ? 'HU' : 'intensity'),
+        valueMin: response.headers.get('X-Value-Min'),
+        valueMax: response.headers.get('X-Value-Max'),
+      },
+    };
+  }
+
   async function applyHu(event) {
     event.preventDefault();
     setHuError('');
@@ -263,33 +314,44 @@ export default function RadiologyViewer({ slide, onError }) {
       setHuError('Maximum must be greater than or equal to the minimum.');
       return;
     }
-    const params = new URLSearchParams({
-      index: String(Math.min(index, count - 1)),
-      min_hu: String(low),
-      max_hu: String(high),
-      color: huColor,
-      plane,
-      scale: huSupported || !isVolume ? 'hu' : 'native',
-    });
-    const response = await apiFetch(`${API_BASE_URL}/api/slides/${slide.id}/radiology/hu-mask?${params}`);
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      const detail = typeof body.detail === 'string' ? body.detail : '';
-      setHuError(detail || 'Threshold is not available for this image');
-      return;
-    }
-    const blob = await response.blob();
-    const next = URL.createObjectURL(blob);
-    setHuMask((current) => { if (current) URL.revokeObjectURL(current); return next; });
-    setHuStats({
-      matching: Number(response.headers.get('X-Matching-Pixels') || 0),
-      eligible: Number(response.headers.get('X-Eligible-Pixels') || 0),
-      percentage: response.headers.get('X-Percentage') || '0',
-      width: response.headers.get('X-Width'),
-      height: response.headers.get('X-Height'),
-    });
     setHuVisible(true);
+    setAppliedThreshold({ low, high, color: huColor });
   }
+
+  function clearThreshold() {
+    thresholdReq.current += 1;
+    setAppliedThreshold(null);
+    setHuMask((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+    setHuStats(null);
+    setHuError('');
+  }
+
+  // Keep the applied threshold on the current slice when scrolling / changing plane.
+  useEffect(() => {
+    if (!meta || viewMode !== '2d' || !appliedThreshold) return undefined;
+    const { low, high, color } = appliedThreshold;
+    const controller = new AbortController();
+    const requestId = ++thresholdReq.current;
+    const slice = Math.min(index, (meta.plane_counts?.[plane] || meta.instance_count || 1) - 1);
+    fetchThresholdMask(slice, plane, low, high, color, controller.signal)
+      .then((result) => {
+        if (requestId !== thresholdReq.current) {
+          URL.revokeObjectURL(result.url);
+          return;
+        }
+        setHuMask((current) => { if (current) URL.revokeObjectURL(current); return result.url; });
+        setHuStats(result.stats);
+        setHuError(result.stats.matching === 0
+          ? `No voxels matched ${low}–${high} ${result.stats.unit} on this slice.`
+          : '');
+      })
+      .catch((error) => {
+        if (error.name !== 'AbortError' && requestId === thresholdReq.current) {
+          setHuError(error.message);
+        }
+      });
+    return () => controller.abort();
+  }, [meta, viewMode, appliedThreshold, index, plane, slide.id]);
 
   function toggleFullscreen() {
     const node = shellRef.current;
@@ -501,15 +563,37 @@ export default function RadiologyViewer({ slide, onError }) {
                     <select
                       defaultValue="Custom"
                       onChange={(event) => {
-                        const range = HU_PRESETS[event.target.value];
-                        if (range) {
-                          setHuMin(String(range[0]));
-                          setHuMax(String(range[1]));
+                        if (huSupported) {
+                          const range = HU_PRESETS[event.target.value];
+                          if (range) {
+                            setHuMin(String(range[0]));
+                            setHuMax(String(range[1]));
+                          }
+                          return;
+                        }
+                        const kind = INTENSITY_PRESETS[event.target.value];
+                        const stats = huStats;
+                        // Prefer last mask value range; otherwise leave custom for Apply after user edits.
+                        const vmin = Number(stats?.valueMin);
+                        const vmax = Number(stats?.valueMax);
+                        if (!kind || !Number.isFinite(vmin) || !Number.isFinite(vmax) || vmax <= vmin) return;
+                        const span = vmax - vmin;
+                        if (kind === 'lower') {
+                          setHuMin(String(Math.round(vmin)));
+                          setHuMax(String(Math.round(vmin + span / 3)));
+                        } else if (kind === 'upper') {
+                          setHuMin(String(Math.round(vmax - span / 3)));
+                          setHuMax(String(Math.round(vmax)));
+                        } else {
+                          setHuMin(String(Math.round(vmin + span / 3)));
+                          setHuMax(String(Math.round(vmax - span / 3)));
                         }
                       }}
                     >
                       <option value="Custom">Custom</option>
-                      {Object.keys(HU_PRESETS).map((name) => <option key={name} value={name}>{name}</option>)}
+                      {Object.keys(huSupported ? HU_PRESETS : INTENSITY_PRESETS).map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
                     </select>
                   </label>
                   <div className="imaging-pair">
@@ -521,7 +605,14 @@ export default function RadiologyViewer({ slide, onError }) {
                     </label>
                   </div>
                   <label>Color
-                    <select value={huColor} onChange={(event) => setHuColor(event.target.value)}>
+                    <select
+                      value={huColor}
+                      onChange={(event) => {
+                        const next = event.target.value;
+                        setHuColor(next);
+                        setAppliedThreshold((current) => (current ? { ...current, color: next } : current));
+                      }}
+                    >
                       <option value="red">Red</option>
                       <option value="green">Green</option>
                       <option value="blue">Blue</option>
@@ -533,12 +624,12 @@ export default function RadiologyViewer({ slide, onError }) {
                   </label>
                   <div className="imaging-actions">
                     <button type="submit" className="btn-control-secondary">Apply</button>
-                    <button type="button" className="btn-control-secondary" onClick={() => { setHuMask(''); setHuStats(null); setHuError(''); }}>Clear</button>
+                    <button type="button" className="btn-control-secondary" onClick={clearThreshold}>Clear</button>
                   </div>
                   {huError && <p className="imaging-note imaging-note--error">{huError}</p>}
                   {huStats && (
                     <p className="imaging-note">
-                      {huStats.matching} matching pixels ({huStats.percentage}% of {huStats.eligible}). {unitLabel} range, not a diagnosis.
+                      {huStats.matching} matching pixels ({huStats.percentage}% of {huStats.eligible}). {huStats.unit || unitLabel} range, not a diagnosis.
                     </p>
                   )}
                 </form>
