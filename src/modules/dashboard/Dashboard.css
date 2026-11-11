@@ -271,6 +271,18 @@ html[data-theme='dark'] .dashboard-card__icon {
   color: #4a4a4a;
 }
 
+html[data-theme='dark'] .dashboard-card:hover,
+html[data-theme='dark'] .dashboard-card--active {
+  color: #fff;
+  background: #d43e35;
+  border-color: #d43e35;
+}
+
+html[data-theme='dark'] .dashboard-card:hover .dashboard-card__icon,
+html[data-theme='dark'] .dashboard-card--active .dashboard-card__icon {
+  color: rgba(255, 255, 255, 0.34);
+}
+
 .dashboard-home a:focus-visible,
 .dashboard-home button:focus-visible,
 .dashboard-home input:focus-visible {

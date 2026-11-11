@@ -21,6 +21,33 @@ export default function TopBar() {
     localStorage.setItem('vista-theme', theme);
   }, [theme]);
 
+  const applyTheme = (nextTheme) => {
+    const root = document.documentElement;
+    const switchTheme = () => {
+      root.classList.add('theme-animating');
+      setTheme(nextTheme);
+      window.setTimeout(() => root.classList.remove('theme-animating'), 360);
+    };
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setTheme(nextTheme);
+      return;
+    }
+
+    if (typeof document.startViewTransition === 'function') {
+      root.classList.add('theme-animating');
+      const transition = document.startViewTransition(() => {
+        setTheme(nextTheme);
+      });
+      transition.finished.finally(() => {
+        root.classList.remove('theme-animating');
+      });
+      return;
+    }
+
+    switchTheme();
+  };
+
   useEffect(() => {
     if (!profileOpen) return undefined;
     const closeOnOutside = (event) => {
@@ -68,7 +95,7 @@ export default function TopBar() {
         <span className="top-bar__avatar"><UserRound size={16} aria-hidden="true" /></span><span className="top-bar__identity"><strong>{displayName}</strong><small>{user?.role || 'User'}</small></span><ChevronDown className="top-bar__chevron" size={14} />
       </button>
       {profileOpen && <div className="top-bar__profile-menu" id="top-bar-profile-menu" role="menu">
-        <button type="button" role="menuitem" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+        <button type="button" role="menuitem" onClick={() => applyTheme(theme === 'dark' ? 'light' : 'dark')}>
           {theme === 'dark' ? <><Sun size={15} aria-hidden="true" /> Light mode</> : <><Moon size={15} aria-hidden="true" /> Dark mode</>}
         </button>
         <button type="button" role="menuitem" onClick={logout}><LogOut size={15} aria-hidden="true" /> Log out</button>
