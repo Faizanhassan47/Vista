@@ -26,24 +26,6 @@ export const viewerService = {
   }),
   aiResults: (slideId, signal) => request(`${platformRoot}/ai/slides/${slideId}/results`, { signal }),
 
-  // ── AI Evidence Map (Phase 1) ────────────────────────────────────────────
-  getEvidenceFindings: (slideId, params = {}, signal) => {
-    const qs = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value != null && value !== '') qs.set(key, String(value));
-    });
-    const query = qs.toString();
-    return request(`${apiRoot}/slides/${slideId}/ai/evidence${query ? `?${query}` : ''}`, { signal });
-  },
-  projectEvidence: (slideId) => request(`${apiRoot}/slides/${slideId}/ai/evidence/project`, { method: 'POST' }),
-  getEvidenceFinding: (findingId, signal) => request(`${apiRoot}/ai/evidence/${findingId}`, { signal }),
-  getEvidenceHistory: (findingId, signal) => request(`${apiRoot}/ai/evidence/${findingId}/history`, { signal }),
-  reviewEvidenceFinding: (findingId, payload) => request(`${apiRoot}/ai/evidence/${findingId}/review`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  }),
-
   bookmarks: (slideId, signal) => request(`${platformRoot}/slides/${slideId}/bookmarks`, { signal }),
   preferences: (slideId, signal) => request(`${platformRoot}/slides/${slideId}/viewer-preferences`, { signal }),
   savePreferences: (slideId, settings, signal) => request(`${platformRoot}/slides/${slideId}/viewer-preferences`, {
