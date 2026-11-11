@@ -92,7 +92,7 @@ export default function ReportEditor({ selectedCase, selectSlide, setMessage, on
       });
       setAiDraftVersion((current) => current + 1);
       setIsDirty(true);
-      setMessage({ text: `AI-assisted draft added from ${result.result_count} verified Evidence Map finding${result.result_count === 1 ? '' : 's'}. Review before finalizing.`, type: 'success' });
+      setMessage({ text: `AI-assisted draft added from ${result.result_count} verified finding${result.result_count === 1 ? '' : 's'}. Review before finalizing.`, type: 'success' });
     } catch (error) {
       setMessage({ text: error.message, type: 'error' });
     } finally {

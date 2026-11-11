@@ -24,7 +24,6 @@ import { API_BASE_URL } from '../../config';
 import { aiSubscriptionService } from '../../services/aiSubscriptionService';
 import { grandqcService } from '../../services/grandqcService';
 import { qcClassColor } from './GrandQCOverlay';
-import EvidenceMapPanel from './EvidenceMapPanel';
 import './AiAnalysisPanel.css';
 
 function formatDuration(sec) {
@@ -247,9 +246,6 @@ export default function AiAnalysisPanel({
   onToggleQcVisible,
   qcHiddenClasses = new Set(),
   onToggleQcClass,
-  onFocusEvidenceFinding,
-  onSelectEvidenceFinding,
-  selectedEvidenceFindingId,
 }) {
   const [open, setOpen] = useState(true);
   const [entitlements, setEntitlements] = useState(null);
@@ -275,7 +271,6 @@ export default function AiAnalysisPanel({
   const [completionNotice, setCompletionNotice] = useState('');
   const [showAccessDetails, setShowAccessDetails] = useState(false);
   const [unavailableFeature, setUnavailableFeature] = useState(null);
-  const [evidenceRefreshKey, setEvidenceRefreshKey] = useState(0);
   const abortRef = useRef(null);
   const pollTimerRef = useRef(null);
 
@@ -395,7 +390,6 @@ export default function AiAnalysisPanel({
             setAnalyses((prev) => [result, ...prev.filter((a) => a.id !== result.id)]);
             onAnalysisReady?.(result);
             if (result.roi) onPanToRoi?.(result.roi);
-            setEvidenceRefreshKey((value) => value + 1);
             setCompletionNotice('AI analysis completed. Results are ready to review.');
           }
         } else if (job.status === 'failed' || job.status === 'timeout') {
@@ -628,7 +622,6 @@ export default function AiAnalysisPanel({
                 setQcResult(job.result || job);
                 onQcAnalysisChange?.(null);
               }
-              setEvidenceRefreshKey((value) => value + 1);
               setCompletionNotice('GrandQC whole-slide analysis completed.');
             } else {
               const message = job.error || `GrandQC job ${status}.`;
@@ -846,14 +839,6 @@ export default function AiAnalysisPanel({
             <AlertTriangle size={11} aria-hidden="true" style={{ marginRight: 4, verticalAlign: 'middle' }} />
             Research Use Only — Not for Clinical Diagnosis
           </p>
-
-          <EvidenceMapPanel
-            slide={slide}
-            refreshKey={evidenceRefreshKey}
-            selectedFindingId={selectedEvidenceFindingId}
-            onFocusFinding={onFocusEvidenceFinding}
-            onSelectFinding={onSelectEvidenceFinding}
-          />
 
           <div className="ai-feature-selector">
             <p className="ai-feature-selector__label">AI features on this slide</p>
