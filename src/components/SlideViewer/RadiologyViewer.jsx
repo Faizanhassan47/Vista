@@ -33,6 +33,7 @@ function midCursor(counts) {
 export default function RadiologyViewer({ slide, onError }) {
   const shellRef = useRef(null);
   const stageRef = useRef(null);
+  const [fullscreen, setFullscreen] = useState(false);
   const [meta, setMeta] = useState(null);
   const [index, setIndex] = useState(0);
   const [plane, setPlane] = useState('axial');
@@ -53,6 +54,11 @@ export default function RadiologyViewer({ slide, onError }) {
   const drag = useRef(null);
   const wlDrag = useRef(null);
   const wlTimer = useRef(null);
+  const toolRef = useRef(tool);
+  const countRef = useRef(1);
+  const planeRef = useRef(plane);
+  toolRef.current = tool;
+  planeRef.current = plane;
   const [mprCursor, setMprCursor] = useState({ axial: 0, coronal: 0, sagittal: 0 });
   const [huMin, setHuMin] = useState('-1000');
   const [huMax, setHuMax] = useState('-500');
@@ -80,9 +86,11 @@ export default function RadiologyViewer({ slide, onError }) {
           setIndex(cursor.axial);
           if (slide.file_type === 'nifti') setViewMode('mpr');
         } else {
-          setIndex(Math.floor((axialCount - 1) / 2));
+          const mid = Math.floor((axialCount - 1) / 2);
+          setIndex(mid);
+          setMprCursor({ axial: mid, coronal: 0, sagittal: 0 });
         }
-        setTool(axialCount > 1 ? 'stack' : 'zoom');
+        setTool(axialCount > 1 || body.plane_counts ? 'stack' : 'zoom');
         const supportsHu = Boolean(body.calibration?.hu_threshold_supported);
         if (supportsHu) {
           const air = findHuTissuePreset('air');
@@ -157,6 +165,7 @@ export default function RadiologyViewer({ slide, onError }) {
   }, [natural.w, natural.h, panelOpen, viewMode]);
 
   const count = meta?.plane_counts?.[plane] || meta?.instance_count || 1;
+  countRef.current = count;
   const huSupported = Boolean(meta?.calibration?.hu_threshold_supported);
   const isCt = huSupported || String(meta?.modality || '').includes('CT');
   const isVolume = slide.file_type === 'nifti' && Boolean(meta?.plane_counts);
@@ -214,29 +223,65 @@ export default function RadiologyViewer({ slide, onError }) {
   }
 
   function scheduleWl(center, width) {
+    // Update readout immediately; debounce the image refetch so drags do not cancel every request.
+    setPreset('');
+    setWlCenterInput(String(Math.round(center * 10) / 10));
+    setWlWidthInput(String(Math.round(width * 10) / 10));
     if (wlTimer.current) window.clearTimeout(wlTimer.current);
-    wlTimer.current = window.setTimeout(() => commitWl(center, width), 60);
+    wlTimer.current = window.setTimeout(() => commitWl(center, width), 120);
   }
 
-  function onWheel(event) {
-    event.preventDefault();
-    if (tool === 'stack' && count > 1) {
-      setIndex((value) => {
-        const next = Math.min(count - 1, Math.max(0, value + (event.deltaY > 0 ? 1 : -1)));
-        setMprCursor((cursor) => ({ ...cursor, [plane]: next }));
-        return next;
-      });
-      return;
+  function flushWl() {
+    if (wlTimer.current) {
+      window.clearTimeout(wlTimer.current);
+      wlTimer.current = null;
     }
-    if (tool === 'zoom' || count === 1) zoomBy(event.deltaY > 0 ? 0.9 : 1.1);
+    if (!wlDrag.current?.last) return;
+    commitWl(wlDrag.current.last.center, wlDrag.current.last.width);
   }
 
-  function onStageDown(event) {
-    if (tool === 'pan') {
+  function stepSlice(delta) {
+    const total = countRef.current;
+    const activePlane = planeRef.current;
+    if (total <= 1) return;
+    setIndex((value) => {
+      const next = Math.min(total - 1, Math.max(0, value + delta));
+      setMprCursor((cursor) => ({ ...cursor, [activePlane]: next }));
+      return next;
+    });
+  }
+
+  // Attach wheel when the 2D stage mounts (callback ref survives view-mode switches).
+  const attachStage = (node) => {
+    if (stageRef.current?.__vistaWheelCleanup) {
+      stageRef.current.__vistaWheelCleanup();
+      delete stageRef.current.__vistaWheelCleanup;
+    }
+    stageRef.current = node;
+    if (!node) return;
+    const onWheelNative = (event) => {
+      event.preventDefault();
+      const currentTool = toolRef.current;
+      if (event.ctrlKey || event.metaKey || currentTool === 'zoom' || countRef.current <= 1) {
+        zoomBy(event.deltaY > 0 ? 0.9 : 1.1);
+        return;
+      }
+      stepSlice(event.deltaY > 0 ? 1 : -1);
+    };
+    node.addEventListener('wheel', onWheelNative, { passive: false });
+    node.__vistaWheelCleanup = () => node.removeEventListener('wheel', onWheelNative);
+  };
+
+  function onStagePointerDown(event) {
+    if (event.button != null && event.button !== 0) return;
+    const currentTool = toolRef.current;
+    if (currentTool === 'pan') {
       drag.current = { x: event.clientX, y: event.clientY, ox: offset.x, oy: offset.y };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
       return;
     }
-    if (tool === 'wl') {
+    if (currentTool === 'wl') {
       const startCenter = wlCenter ?? (isCt ? 40 : 0);
       const startWidth = wlWidth ?? (isCt ? 400 : 1000);
       wlDrag.current = {
@@ -244,12 +289,14 @@ export default function RadiologyViewer({ slide, onError }) {
         y: event.clientY,
         center: startCenter,
         width: startWidth,
+        last: { center: startCenter, width: startWidth },
       };
-      setTool('wl');
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
     }
   }
 
-  function onStageMove(event) {
+  function onStagePointerMove(event) {
     if (drag.current) {
       setOffset({
         x: drag.current.ox + event.clientX - drag.current.x,
@@ -262,12 +309,19 @@ export default function RadiologyViewer({ slide, onError }) {
     const dy = event.clientY - wlDrag.current.y;
     const nextWidth = Math.max(1, wlDrag.current.width + dx * 2);
     const nextCenter = wlDrag.current.center - dy * 1.5;
+    wlDrag.current.last = { center: nextCenter, width: nextWidth };
     scheduleWl(nextCenter, nextWidth);
   }
 
-  function onStageUp() {
+  function onStagePointerUp(event) {
+    if (wlDrag.current) flushWl();
     drag.current = null;
     wlDrag.current = null;
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      /* already released */
+    }
   }
 
   async function fetchThresholdMask(sliceIndex, planeName, low, high, color, signal) {
@@ -353,10 +407,16 @@ export default function RadiologyViewer({ slide, onError }) {
     return () => controller.abort();
   }, [meta, viewMode, appliedThreshold, index, plane, slide.id]);
 
+  useEffect(() => {
+    const changed = () => setFullscreen(document.fullscreenElement === shellRef.current);
+    document.addEventListener('fullscreenchange', changed);
+    return () => document.removeEventListener('fullscreenchange', changed);
+  }, []);
+
   function toggleFullscreen() {
     const node = shellRef.current;
     if (!node) return;
-    if (document.fullscreenElement) document.exitFullscreen();
+    if (document.fullscreenElement === node) document.exitFullscreen();
     else node.requestFullscreen?.();
   }
 
@@ -376,7 +436,7 @@ export default function RadiologyViewer({ slide, onError }) {
   }
 
   return (
-    <div className="radiology-workstation" ref={shellRef}>
+    <div className={`radiology-workstation${fullscreen ? ' is-fullscreen' : ''}`} ref={shellRef}>
       <div className="radiology-toolbar" role="toolbar" aria-label="Imaging viewer">
         <div className="radiology-toolbar__group">
           <button type="button" className={`btn-control-secondary${viewMode === '2d' ? ' is-active' : ''}`} onClick={() => { if (plane === '3d') setPlane('axial'); setViewMode('2d'); }}><Scan size={14} /> 2D</button>
@@ -404,14 +464,21 @@ export default function RadiologyViewer({ slide, onError }) {
             <button
               type="button"
               className={`btn-control-secondary${tool === 'wl' ? ' is-active' : ''}`}
-              title="Window/Level: drag horizontally for width, vertically for level"
+              title="Window/Level: select, then drag on the image — horizontal width, vertical level"
               onClick={() => setTool('wl')}
             >
               <SunMedium size={14} /> W/L
             </button>
             <button type="button" className="btn-control-secondary" title="Reset view and window" onClick={() => { resetView(); applyPreset(''); }}><RotateCcw size={14} /></button>
-            {viewMode === '2d' && count > 1 && (
-              <button type="button" className={`btn-control-secondary${tool === 'stack' ? ' is-active' : ''}`} title="Mouse wheel changes slice" onClick={() => setTool('stack')}>Slices</button>
+            {(viewMode === '2d' ? count > 1 : Boolean(meta?.plane_counts || (meta?.instance_count || 0) > 1)) && (
+              <button
+                type="button"
+                className={`btn-control-secondary${tool === 'stack' ? ' is-active' : ''}`}
+                title="Scroll slices with the mouse wheel over the image"
+                onClick={() => setTool('stack')}
+              >
+                Slices
+              </button>
             )}
             {viewMode === '2d' && isVolume && (
               <div className="radiology-toolbar__group" role="group" aria-label="Plane">
@@ -431,9 +498,23 @@ export default function RadiologyViewer({ slide, onError }) {
         </div>
       </div>
 
-      <div className={`radiology-workstation__body${panelOpen && viewMode !== '3d' ? '' : ' is-panel-closed'}`}>
+      <div className={`radiology-workstation__body${panelOpen && viewMode !== '3d' ? '' : ' is-panel-closed'}${viewMode === '3d' ? ' is-rail-hidden' : ''}`}>
         {viewMode === '3d' ? (
-          <MedicalVolume3DViewer slideId={slide.id} hu={huSupported} />
+          <MedicalVolume3DViewer
+            slideId={slide.id}
+            hu={huSupported}
+            showCrosshair
+            cursor={{
+              axial: plane === 'axial' ? index : mprCursor.axial,
+              coronal: plane === 'coronal' ? index : mprCursor.coronal,
+              sagittal: plane === 'sagittal' ? index : mprCursor.sagittal,
+            }}
+            planeCounts={meta?.plane_counts || {
+              axial: meta?.instance_count || 1,
+              coronal: 1,
+              sagittal: 1,
+            }}
+          />
         ) : viewMode === 'mpr' ? (
           <RadiologyMprViewer
             slideId={slide.id}
@@ -446,16 +527,19 @@ export default function RadiologyViewer({ slide, onError }) {
             onActivePlane={(next) => setPlane(next === '3d' ? '3d' : next)}
             hu={huSupported}
             showVolume={Boolean(meta?.volume_supported)}
+            tool={tool}
+            onWlDrag={scheduleWl}
+            meta={meta}
+            slide={slide}
           />
         ) : (
           <div
-            ref={stageRef}
-            className={`viewer radiology-stage${tool === 'pan' ? ' is-pan' : ''}${tool === 'wl' ? ' is-wl' : ''}`}
-            onWheel={onWheel}
-            onMouseDown={onStageDown}
-            onMouseMove={onStageMove}
-            onMouseUp={onStageUp}
-            onMouseLeave={onStageUp}
+            ref={attachStage}
+            className={`viewer radiology-stage${tool === 'pan' ? ' is-pan' : ''}${tool === 'wl' ? ' is-wl' : ''}${tool === 'stack' ? ' is-stack' : ''}`}
+            onPointerDown={onStagePointerDown}
+            onPointerMove={onStagePointerMove}
+            onPointerUp={onStagePointerUp}
+            onPointerCancel={onStagePointerUp}
           >
             {frameError ? <p className="viewer-hint-bar">{frameError}</p> : url && (
               <div
@@ -480,13 +564,21 @@ export default function RadiologyViewer({ slide, onError }) {
               </div>
             )}
             <div className="radiology-overlay radiology-overlay--tl">
-              <span>{meta?.modality || slide.format || 'Image'}</span>
-              <span>{count > 1 ? `Slice ${Math.min(index + 1, count)} / ${count}` : 'Single image'}</span>
+              <span>{meta?.patient_name || meta?.study_description || slide.name || 'Study'}</span>
+              <span>{meta?.modality || slide.format || 'Image'}{meta?.series_description ? ` · ${meta.series_description}` : ''}</span>
+              <span>{count > 1 ? `Im: ${Math.min(index + 1, count)} / ${count}` : 'Single image'}</span>
             </div>
             <div className="radiology-overlay radiology-overlay--tr">
               <span>Zoom {Math.round(scale * 100)}%</span>
-              <span>W/L {windowLabel}</span>
-              {meta && !meta.spacing_available && <span>Spacing not available</span>}
+              <span>W: {wlWidth != null ? Math.round(wlWidth) : 'Auto'} L: {wlCenter != null ? Math.round(wlCenter) : 'Auto'}</span>
+              {meta && !meta.spacing_available && <span>Spacing N/A</span>}
+            </div>
+            <div className="radiology-overlay radiology-overlay--bl">
+              <span>{plane.toUpperCase()}</span>
+              <span>{meta?.intensity_unit || (huSupported ? 'HU' : '')}</span>
+            </div>
+            <div className="radiology-overlay radiology-overlay--br">
+              <span>{dimensionsLabel}</span>
             </div>
             {markers && (
               <>
@@ -497,6 +589,20 @@ export default function RadiologyViewer({ slide, onError }) {
               </>
             )}
           </div>
+        )}
+
+        {viewMode !== '3d' && (
+          <aside className="radiology-tool-rail" aria-label="Viewer tools">
+            <button type="button" className={`btn-control-secondary${viewMode === '2d' ? ' is-active' : ''}`} title="2D" onClick={() => { if (plane === '3d') setPlane('axial'); setViewMode('2d'); }}><Scan size={15} /></button>
+            <button type="button" className={`btn-control-secondary${viewMode === 'mpr' ? ' is-active' : ''}`} title={mprSupported ? 'MPR' : 'MPR needs a NIfTI volume'} disabled={!mprSupported} onClick={enterMpr}><Columns2 size={15} /></button>
+            <button type="button" className={`btn-control-secondary${viewMode === '3d' ? ' is-active' : ''}`} title="3D" disabled={!meta?.volume_supported} onClick={() => setViewMode('3d')}><Box size={15} /></button>
+            <button type="button" className={`btn-control-secondary${tool === 'zoom' ? ' is-active' : ''}`} title="Zoom" onClick={() => setTool('zoom')}><ZoomIn size={15} /></button>
+            <button type="button" className={`btn-control-secondary${tool === 'pan' ? ' is-active' : ''}`} title="Pan" onClick={() => setTool('pan')}><Hand size={15} /></button>
+            <button type="button" className={`btn-control-secondary${tool === 'wl' ? ' is-active' : ''}`} title="Window / Level" onClick={() => setTool('wl')}><SunMedium size={15} /></button>
+            <button type="button" className={`btn-control-secondary${tool === 'stack' ? ' is-active' : ''}`} title="Scroll slices" onClick={() => setTool('stack')} disabled={!(viewMode === '2d' ? count > 1 : Boolean(meta?.plane_counts))}><RotateCcw size={15} /></button>
+            <div className="radiology-tool-rail__spacer" />
+            <button type="button" className="btn-control-secondary" title="Fit / reset" onClick={() => { resetView(); applyPreset(''); }}><Maximize2 size={15} /></button>
+          </aside>
         )}
 
         {panelOpen && viewMode !== '3d' && (
@@ -548,7 +654,11 @@ export default function RadiologyViewer({ slide, onError }) {
                   />
                 </label>
               </div>
-              <p className="imaging-note">Select W/L then drag on the image: horizontal = width, vertical = level.</p>
+              <p className="imaging-note">
+                {viewMode === 'mpr'
+                  ? 'MPR: wheel over a plane to scroll slices. Select W/L then drag on a plane to change window/level. Side-panel presets also apply.'
+                  : '2D: select W/L then drag on the image (↔ width, ↕ level). Wheel scrolls slices (Ctrl+wheel zooms).'}
+              </p>
             </div>
 
             {viewMode === '2d' && (
@@ -697,18 +807,27 @@ export default function RadiologyViewer({ slide, onError }) {
               </div>
             )}
 
-            {viewMode === 'mpr' && (
+            {(viewMode === 'mpr' || viewMode === '3d') && (
               <div className="imaging-panel__section">
                 <h3>Linked cursor</h3>
                 <p className="imaging-note">
-                  Axial {mprCursor.axial + 1}/{meta?.plane_counts?.axial || 1}
-                  {' · '}Coronal {mprCursor.coronal + 1}/{meta?.plane_counts?.coronal || 1}
-                  {' · '}Sagittal {mprCursor.sagittal + 1}/{meta?.plane_counts?.sagittal || 1}
+                  Axial {(viewMode === '3d' && plane === 'axial' ? index : mprCursor.axial) + 1}/{meta?.plane_counts?.axial || meta?.instance_count || 1}
+                  {' · '}Coronal {(viewMode === '3d' && plane === 'coronal' ? index : mprCursor.coronal) + 1}/{meta?.plane_counts?.coronal || 1}
+                  {' · '}Sagittal {(viewMode === '3d' && plane === 'sagittal' ? index : mprCursor.sagittal) + 1}/{meta?.plane_counts?.sagittal || 1}
                 </p>
                 <button
                   type="button"
                   className="btn-control-secondary"
-                  onClick={() => setMprCursor(midCursor(meta?.plane_counts))}
+                  onClick={() => {
+                    const counts = meta?.plane_counts || {
+                      axial: meta?.instance_count || 1,
+                      coronal: 1,
+                      sagittal: 1,
+                    };
+                    const centered = midCursor(counts);
+                    setMprCursor(centered);
+                    if (viewMode === '3d') setIndex(centered[plane] || centered.axial || 0);
+                  }}
                 >
                   Center all planes
                 </button>

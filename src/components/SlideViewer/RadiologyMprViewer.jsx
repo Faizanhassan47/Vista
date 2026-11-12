@@ -58,13 +58,20 @@ function MprPane({
   wlCenter,
   wlWidth,
   active,
+  tool = 'stack',
   onActivate,
   onCursor,
   onWheelSlice,
+  onWlDrag,
+  studyLabel = '',
+  modalityLabel = '',
 }) {
+  const paneRef = useRef(null);
+  const frameRef = useRef(null);
+  const wlDrag = useRef(null);
+  const moved = useRef(false);
   const [url, setUrl] = useState('');
   const [error, setError] = useState('');
-  const frameRef = useRef(null);
   const markers = PLANE_MARKERS[plane];
   const count = counts?.[plane] || 1;
   const hair = crosshairFor(plane, cursor, counts || {});
@@ -106,26 +113,73 @@ function MprPane({
     if (url) URL.revokeObjectURL(url);
   }, [url]);
 
-  function handleClick(event) {
+  // Non-passive wheel so slice scrolling is reliable over the pane.
+  useEffect(() => {
+    const node = paneRef.current;
+    if (!node) return undefined;
+    const onWheel = (event) => {
+      event.preventDefault();
+      onActivate(plane);
+      onWheelSlice(plane, event.deltaY > 0 ? 1 : -1);
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, [plane, onActivate, onWheelSlice]);
+
+  function handlePointerDown(event) {
+    if (event.button != null && event.button !== 0) return;
+    onActivate(plane);
+    moved.current = false;
+    if (tool === 'wl' && onWlDrag) {
+      wlDrag.current = {
+        x: event.clientX,
+        y: event.clientY,
+        center: wlCenter ?? 40,
+        width: wlWidth ?? 400,
+      };
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      return;
+    }
+  }
+
+  function handlePointerMove(event) {
+    if (!wlDrag.current || tool !== 'wl') return;
+    const dx = event.clientX - wlDrag.current.x;
+    const dy = event.clientY - wlDrag.current.y;
+    if (Math.abs(dx) + Math.abs(dy) > 2) moved.current = true;
+    const nextWidth = Math.max(1, wlDrag.current.width + dx * 2);
+    const nextCenter = wlDrag.current.center - dy * 1.5;
+    onWlDrag?.(nextCenter, nextWidth);
+  }
+
+  function handlePointerUp(event) {
+    const wasWl = Boolean(wlDrag.current);
+    wlDrag.current = null;
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      /* already released */
+    }
+    if (wasWl && moved.current) return;
+    // Click (not a W/L drag): move linked crosshair.
     const node = frameRef.current;
     if (!node) return;
     const rect = node.getBoundingClientRect();
     if (rect.width < 1 || rect.height < 1) return;
     const nx = (event.clientX - rect.left) / rect.width;
     const ny = (event.clientY - rect.top) / rect.height;
-    onActivate(plane);
     onCursor(cursorFromClick(plane, nx, ny, counts, cursor));
   }
 
   return (
     <div
-      className={`radiology-mpr__pane${active ? ' is-active' : ''}`}
-      onWheel={(event) => {
-        event.preventDefault();
-        onActivate(plane);
-        onWheelSlice(plane, event.deltaY > 0 ? 1 : -1);
-      }}
-      onClick={handleClick}
+      ref={paneRef}
+      className={`radiology-mpr__pane${active ? ' is-active' : ''}${tool === 'wl' ? ' is-wl' : ''}`}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
       role="presentation"
     >
       <div className="radiology-mpr__label">{plane.charAt(0).toUpperCase() + plane.slice(1)}</div>
@@ -138,10 +192,15 @@ function MprPane({
         </div>
       ) : !error ? <p className="imaging-note">Loading…</p> : null}
       <div className="radiology-overlay radiology-overlay--tl">
-        <span>Slice: {Math.min(index + 1, count)}/{count}</span>
+        {studyLabel ? <span>{studyLabel}</span> : null}
+        <span>{modalityLabel || plane.toUpperCase()}</span>
+        <span>Im: {Math.min(index + 1, count)}/{count}</span>
       </div>
       <div className="radiology-overlay radiology-overlay--tr">
         <span>{wlLabel}</span>
+      </div>
+      <div className="radiology-overlay radiology-overlay--bl">
+        <span>{plane.toUpperCase()}</span>
       </div>
       <span className="radiology-marker radiology-marker--left">{markers.left}</span>
       <span className="radiology-marker radiology-marker--right">{markers.right}</span>
@@ -162,8 +221,14 @@ export default function RadiologyMprViewer({
   onActivePlane,
   hu = false,
   showVolume = true,
+  tool = 'stack',
+  onWlDrag,
+  meta = null,
+  slide = null,
 }) {
   const counts = planeCounts || { axial: 1, coronal: 1, sagittal: 1 };
+  const studyLabel = meta?.patient_name || meta?.study_description || slide?.name || '';
+  const modalityLabel = meta?.modality || slide?.format || '';
 
   function wheelSlice(plane, delta) {
     const max = counts[plane] || 1;
@@ -186,9 +251,13 @@ export default function RadiologyMprViewer({
           wlCenter={wlCenter}
           wlWidth={wlWidth}
           active={activePlane === plane}
+          tool={tool}
           onActivate={onActivePlane}
           onCursor={onCursorChange}
           onWheelSlice={wheelSlice}
+          onWlDrag={onWlDrag}
+          studyLabel={studyLabel}
+          modalityLabel={modalityLabel}
         />
       ))}
       {showVolume ? (
@@ -197,6 +266,10 @@ export default function RadiologyMprViewer({
           onMouseDown={() => onActivePlane('3d')}
         >
           <div className="radiology-mpr__label">3D</div>
+          <div className="radiology-overlay radiology-overlay--tr">
+            <span>Volume</span>
+            <span>{modalityLabel || '3D'}</span>
+          </div>
           <MedicalVolume3DViewer
             slideId={slideId}
             hu={hu}

@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 import { findHuTissuePreset, HU_TISSUE_PRESETS } from './huTissuePresets';
+import {
+  ASCLEPIOS_MIP_ID,
+  applyAsclepiosFilter,
+  findAsclepiosFilter,
+  listAsclepiosFilterOptions,
+} from './asclepiosFilters';
 import '@kitware/vtk.js/Rendering/Profiles/Volume';
 import vtkGenericRenderWindow from '@kitware/vtk.js/Rendering/Misc/GenericRenderWindow';
 import vtkImageData from '@kitware/vtk.js/Common/DataModel/ImageData';
@@ -30,7 +36,8 @@ const THRESHOLD_COLORS = {
 };
 
 function cacheKey(slideId, quality) {
-  return `${slideId}:${quality}`;
+  // calibrated-v2: float32 modality/HU scalars, never display-windowed 0–255
+  return `${slideId}:${quality}:calibrated-v2`;
 }
 
 function rememberVolume(key, value) {
@@ -46,11 +53,17 @@ function summarize(values) {
   const step = Math.max(1, Math.floor(values.length / 50000));
   const all = [];
   const foreground = [];
-  for (let index = 0; index < values.length; index += step) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
     if (!Number.isFinite(value)) continue;
-    all.push(value);
-    if (value > 0) foreground.push(value);
+    if (value < min) min = value;
+    if (value > max) max = value;
+    if (index % step === 0) {
+      all.push(value);
+      if (value > 0) foreground.push(value);
+    }
   }
   const pick = (list) => {
     const sorted = list.length ? list : [0];
@@ -58,7 +71,12 @@ function summarize(values) {
     const at = (fraction) => sorted[Math.min(sorted.length - 1, Math.max(0, Math.floor(fraction * (sorted.length - 1))))];
     return { p05: at(0.05), p25: at(0.25), p50: at(0.5), p75: at(0.75), p95: at(0.95), p99: at(0.99) };
   };
-  return { all: pick(all), foreground: pick(foreground) };
+  return {
+    all: pick(all),
+    foreground: pick(foreground),
+    min: Number.isFinite(min) ? min : 0,
+    max: Number.isFinite(max) ? max : 1,
+  };
 }
 
 function sampleFactorFor(quality, interacting = false) {
@@ -84,9 +102,13 @@ function cursorToWorld(cursor, counts, dims, spacing) {
     Math.max(1, (dims?.[1] || safeCounts.coronal) - 1),
     Math.max(1, (dims?.[2] || safeCounts.axial) - 1),
   ];
-  const i = ((cursor?.sagittal || 0) / Math.max(1, safeCounts.sagittal - 1)) * size[0];
-  const j = ((cursor?.coronal || 0) / Math.max(1, safeCounts.coronal - 1)) * size[1];
-  const k = ((cursor?.axial || 0) / Math.max(1, safeCounts.axial - 1)) * size[2];
+  const along = (index, count, extent) => {
+    if (count <= 1) return extent / 2;
+    return (Math.max(0, Math.min(count - 1, index || 0)) / (count - 1)) * extent;
+  };
+  const i = along(cursor?.sagittal, safeCounts.sagittal, size[0]);
+  const j = along(cursor?.coronal, safeCounts.coronal, size[1]);
+  const k = along(cursor?.axial, safeCounts.axial, size[2]);
   const sp = spacing || [1, 1, 1];
   return [i * sp[0], j * sp[1], k * sp[2]];
 }
@@ -115,18 +137,20 @@ function makeLineActor(rgb) {
 
 function configureVolumeLook(property, spacing, { shaded = true } = {}) {
   const distance = Math.max(...(spacing || [1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
-  property.setScalarOpacityUnitDistance(0, distance * 0.85);
+  // Asclepios-like unit distance keeps soft TF ramps readable without washing out the volume.
+  property.setScalarOpacityUnitDistance(0, distance * 0.75);
   property.setInterpolationTypeToLinear();
   property.setShade(shaded);
-  property.setAmbient(shaded ? 0.28 : 0.45);
-  property.setDiffuse(shaded ? 0.72 : 0.45);
-  property.setSpecular(shaded ? 0.18 : 0);
-  property.setSpecularPower(shaded ? 14 : 1);
+  // Match Asclepios filter JSON shading (ambient/diffuse/specular) for a solid organ look.
+  property.setAmbient(shaded ? 0.4 : 0.45);
+  property.setDiffuse(shaded ? 0.7 : 0.45);
+  property.setSpecular(shaded ? 0.55 : 0);
+  property.setSpecularPower(shaded ? 48 : 1);
   if (property.setUseGradientOpacity) {
     property.setUseGradientOpacity(0, shaded);
     if (shaded && property.setGradientOpacityMinimumValue) {
-      property.setGradientOpacityMinimumValue(0, 2);
-      property.setGradientOpacityMaximumValue(0, 28);
+      property.setGradientOpacityMinimumValue(0, 4);
+      property.setGradientOpacityMaximumValue(0, 40);
       property.setGradientOpacityMinimumOpacity(0, 0);
       property.setGradientOpacityMaximumOpacity(0, 1);
     }
@@ -134,38 +158,74 @@ function configureVolumeLook(property, spacing, { shaded = true } = {}) {
   property.modified();
 }
 
+function classifyThresholdBand(lo, hi, tissueId) {
+  if (tissueId && HU_TISSUE_PRESETS.some((item) => item.id === tissueId)) return tissueId;
+  const mid = (lo + hi) / 2;
+  if (mid <= -900) return 'air';
+  if (mid < -200) return 'lung';
+  if (mid < -20) return 'fat';
+  if (mid < 20) return 'water';
+  if (mid < 90) return 'soft';
+  if (mid < 280) return 'contrast';
+  if (mid < 450) return 'cancellous';
+  if (mid < 2500) return 'cortical';
+  return 'metal';
+}
+
+function mixRgb(base, tint, amount = 0.35) {
+  const t = Math.max(0, Math.min(1, amount));
+  return [
+    base[0] * (1 - t) + tint[0] * t,
+    base[1] * (1 - t) + tint[1] * t,
+    base[2] * (1 - t) + tint[2] * t,
+  ];
+}
+
 function applyTransfer(property, color, opacity, preset, hu, range, spacing, shaded = true) {
   color.removeAllPoints();
   opacity.removeAllPoints();
   if (hu && preset === 'Lung') {
-    color.addRGBPoint(-1000, 0.05, 0.05, 0.08);
-    color.addRGBPoint(-700, 0.55, 0.42, 0.32);
-    color.addRGBPoint(-400, 0.95, 0.82, 0.7);
-    color.addRGBPoint(-200, 1, 0.95, 0.9);
+    // Asclepios-style lung window: transparent air floor, soft parenchyma shell.
+    color.addRGBPoint(-1000, 0.02, 0.02, 0.05);
+    color.addRGBPoint(-850, 0.35, 0.22, 0.18);
+    color.addRGBPoint(-650, 0.82, 0.55, 0.4);
+    color.addRGBPoint(-450, 0.98, 0.88, 0.72);
+    color.addRGBPoint(-200, 1, 0.96, 0.9);
     opacity.addPoint(-1000, 0);
-    opacity.addPoint(-800, 0);
-    opacity.addPoint(-650, 0.05);
-    opacity.addPoint(-450, 0.16);
-    opacity.addPoint(-200, 0.02);
+    opacity.addPoint(-900, 0);
+    opacity.addPoint(-750, 0.04);
+    opacity.addPoint(-600, 0.12);
+    opacity.addPoint(-450, 0.2);
+    opacity.addPoint(-300, 0.06);
+    opacity.addPoint(-150, 0);
   } else if (hu && preset === 'Bone') {
-    color.addRGBPoint(100, 0.35, 0.28, 0.22);
-    color.addRGBPoint(300, 0.85, 0.75, 0.62);
-    color.addRGBPoint(800, 0.98, 0.96, 0.92);
-    color.addRGBPoint(1500, 1, 1, 1);
-    opacity.addPoint(100, 0);
-    opacity.addPoint(220, 0.02);
-    opacity.addPoint(400, 0.18);
-    opacity.addPoint(900, 0.55);
+    // Asclepios BONES-like: hide soft tissue, ramp cortical density with white highlight.
+    color.addRGBPoint(-1024, 0, 0, 0);
+    color.addRGBPoint(150, 0.55, 0.25, 0.15);
+    color.addRGBPoint(287, 0.9, 0.55, 0.3);
+    color.addRGBPoint(500, 0.98, 0.9, 0.75);
+    color.addRGBPoint(900, 1, 0.98, 0.95);
+    color.addRGBPoint(1525, 1, 1, 1);
+    opacity.addPoint(-1024, 0);
+    opacity.addPoint(200, 0);
+    opacity.addPoint(287, 0.08);
+    opacity.addPoint(400, 0.22);
+    opacity.addPoint(650, 0.42);
+    opacity.addPoint(1000, 0.62);
+    opacity.addPoint(1525, 0.72);
   } else if (hu) {
-    color.addRGBPoint(-160, 0.05, 0.02, 0.02);
-    color.addRGBPoint(20, 0.72, 0.38, 0.3);
-    color.addRGBPoint(80, 0.92, 0.72, 0.58);
-    color.addRGBPoint(300, 1, 0.95, 0.88);
+    // Soft-tissue / soft-skin style multi-band shell.
+    color.addRGBPoint(-200, 0.02, 0.01, 0.01);
+    color.addRGBPoint(-40, 0.45, 0.2, 0.15);
+    color.addRGBPoint(40, 0.88, 0.48, 0.35);
+    color.addRGBPoint(120, 0.98, 0.82, 0.65);
+    color.addRGBPoint(300, 1, 0.96, 0.9);
     opacity.addPoint(-200, 0);
-    opacity.addPoint(-40, 0);
-    opacity.addPoint(20, 0.035);
-    opacity.addPoint(90, 0.12);
-    opacity.addPoint(250, 0.28);
+    opacity.addPoint(-60, 0);
+    opacity.addPoint(10, 0.04);
+    opacity.addPoint(60, 0.14);
+    opacity.addPoint(140, 0.26);
+    opacity.addPoint(280, 0.32);
   } else {
     const tissue = range?.foreground || { p05: 1, p25: 20, p50: 40, p75: 60, p95: 80, p99: 90 };
     const floor = Math.max(tissue.p05 * 0.35, 0);
@@ -207,43 +267,120 @@ function applyTransfer(property, color, opacity, preset, hu, range, spacing, sha
   configureVolumeLook(property, spacing, { shaded });
 }
 
-function applyThresholdTransfer(property, color, opacity, low, high, colorName, opacityPct, spacing, dataRange) {
-  const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
-  const peak = Math.max(0.05, Math.min(0.9, opacityPct / 100));
-  const span = Math.max(1e-3, high - low);
-  const pad = Math.max(span * 0.02, Number.isFinite(dataRange?.span) ? dataRange.span * 0.001 : 1);
-  const floor = Number.isFinite(dataRange?.min) ? dataRange.min - pad : low - pad * 4;
-  const ceil = Number.isFinite(dataRange?.max) ? dataRange.max + pad : high + pad * 4;
+function applyThresholdTransfer(property, color, opacity, low, high, colorName, opacityPct, spacing, dataRange, tissueId = '') {
+  const tint = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
+  // Overlay opacity slider maps to in-band peak; outside the HU interval stays transparent.
+  const peak = Math.max(0.1, Math.min(0.85, opacityPct / 100));
+  const floor = Number.isFinite(dataRange?.min) ? Math.min(dataRange.min, low) - 1 : low - 2048;
+  const ceil = Number.isFinite(dataRange?.max) ? Math.max(dataRange.max, high) + 1 : high + 2048;
+  const lo = Math.min(low, high);
+  const hi = Math.max(low, high);
+  const span = Math.max(1, hi - lo);
+  const edge = Math.max(2, Math.min(span * 0.18, span * 0.45));
+  const band = classifyThresholdBand(lo, hi, tissueId);
+  const a = lo + edge * 0.35;
+  const b = lo + span * 0.45;
+  const c = hi - edge * 0.35;
+
+  // Asclepios-style anatomical base colors, lightly tinted by the overlay color control.
+  let c0 = [0.15, 0.08, 0.06];
+  let c1 = [0.75, 0.35, 0.22];
+  let c2 = [0.98, 0.82, 0.62];
+  let c3 = [1, 0.97, 0.92];
+  let oA = peak * 0.18;
+  let oB = peak * 0.55;
+  let oC = peak * 0.78;
+  let oHi = peak * 0.62;
+
+  if (band === 'lung' || band === 'air') {
+    c0 = [0.08, 0.06, 0.1];
+    c1 = [0.55, 0.35, 0.28];
+    c2 = [0.95, 0.78, 0.6];
+    c3 = [1, 0.94, 0.88];
+    oA = peak * 0.12;
+    oB = peak * 0.42;
+    oC = peak * 0.28;
+    oHi = peak * 0.08;
+  } else if (band === 'fat') {
+    c0 = [0.12, 0.08, 0.04];
+    c1 = [0.78, 0.55, 0.22];
+    c2 = [0.98, 0.88, 0.55];
+    c3 = [1, 0.96, 0.82];
+    oA = peak * 0.16;
+    oB = peak * 0.48;
+    oC = peak * 0.4;
+    oHi = peak * 0.22;
+  } else if (band === 'soft' || band === 'water') {
+    c0 = [0.1, 0.04, 0.04];
+    c1 = [0.72, 0.32, 0.25];
+    c2 = [0.95, 0.7, 0.52];
+    c3 = [1, 0.94, 0.86];
+    oA = peak * 0.14;
+    oB = peak * 0.5;
+    oC = peak * 0.58;
+    oHi = peak * 0.36;
+  } else if (band === 'contrast') {
+    c0 = [0.2, 0.05, 0.05];
+    c1 = [0.85, 0.18, 0.15];
+    c2 = [0.98, 0.55, 0.35];
+    c3 = [1, 0.9, 0.78];
+    oA = peak * 0.1;
+    oB = peak * 0.45;
+    oC = peak * 0.72;
+    oHi = peak * 0.55;
+  } else if (band === 'cancellous' || band === 'cortical' || band === 'metal') {
+    // Asclepios Bones-like: soft entry, dense white highlight at the high end.
+    c0 = [0.45, 0.22, 0.12];
+    c1 = [0.9, 0.55, 0.28];
+    c2 = [0.98, 0.9, 0.75];
+    c3 = [1, 1, 1];
+    oA = peak * 0.12;
+    oB = peak * 0.4;
+    oC = peak * 0.7;
+    oHi = peak * 0.82;
+  }
+
+  c0 = mixRgb(c0, tint, 0.28);
+  c1 = mixRgb(c1, tint, 0.32);
+  c2 = mixRgb(c2, tint, 0.22);
+  c3 = mixRgb(c3, tint, 0.12);
+
   color.removeAllPoints();
   opacity.removeAllPoints();
-  // Anchor outside the data range so VTK clamping keeps everything else transparent.
-  color.addRGBPoint(floor, rgb[0] * 0.15, rgb[1] * 0.15, rgb[2] * 0.15);
-  color.addRGBPoint(low - pad, rgb[0] * 0.25, rgb[1] * 0.25, rgb[2] * 0.25);
-  color.addRGBPoint(low, ...rgb);
-  color.addRGBPoint((low + high) / 2, ...rgb);
-  color.addRGBPoint(high, ...rgb);
-  color.addRGBPoint(high + pad, rgb[0] * 0.25, rgb[1] * 0.25, rgb[2] * 0.25);
-  color.addRGBPoint(ceil, rgb[0] * 0.15, rgb[1] * 0.15, rgb[2] * 0.15);
+  // Soft HU ramp: fully transparent outside [lo, hi], Asclepios-style curve inside.
   opacity.addPoint(floor, 0);
-  opacity.addPoint(low - pad, 0);
-  opacity.addPoint(low, peak * 0.7);
-  opacity.addPoint((low + high) / 2, peak);
-  opacity.addPoint(high, peak * 0.7);
-  opacity.addPoint(high + pad, 0);
+  opacity.addPoint(lo - 0.5, 0);
+  opacity.addPoint(lo, 0);
+  opacity.addPoint(a, oA);
+  opacity.addPoint(b, oB);
+  opacity.addPoint(Math.max(b, c), oC);
+  opacity.addPoint(hi, oHi);
+  opacity.addPoint(hi + 0.5, 0);
   opacity.addPoint(ceil, 0);
-  // Threshold bands must stay visible on flat interiors; gradient opacity hides air/soft tissue.
-  property.setInterpolationTypeToLinear();
-  property.setShade(false);
-  property.setAmbient(0.55);
-  property.setDiffuse(0.45);
-  property.setSpecular(0);
-  if (property.setUseGradientOpacity) property.setUseGradientOpacity(0, false);
+
+  color.addRGBPoint(floor, ...c0);
+  color.addRGBPoint(lo, ...c0);
+  color.addRGBPoint(a, ...c1);
+  color.addRGBPoint(b, ...c2);
+  color.addRGBPoint(Math.max(b, c), ...c3);
+  color.addRGBPoint(hi, ...c3);
+  color.addRGBPoint(ceil, ...c3);
+
+  configureVolumeLook(property, spacing, { shaded: true });
   const distance = Math.min(...(spacing || [1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
-  property.setScalarOpacityUnitDistance(0, distance * 0.35);
+  property.setScalarOpacityUnitDistance(0, distance * 0.62);
   property.modified();
 }
 
 function volumeDataRange(range) {
+  if (Number.isFinite(range?.min) && Number.isFinite(range?.max)) {
+    return {
+      min: range.min,
+      max: range.max,
+      span: Math.max(1e-3, range.max - range.min),
+      foreground: range.foreground || range.all,
+    };
+  }
   const all = range?.all;
   if (!all) return null;
   const min = Math.min(all.p05, all.p25, all.p50);
@@ -285,19 +422,31 @@ async function fetchVolume(slideId, quality, signal) {
     Number(response.headers.get('X-Spacing-J')),
     Number(response.headers.get('X-Spacing-K')),
   ];
-  const reduced = response.headers.get('X-Preview') === '1';
+  const reduced = response.headers.get('X-Preview') === '1';  const dtype = (response.headers.get('X-Dtype') || 'float32').toLowerCase();
+  if (dtype && dtype !== 'float32') {
+    throw new Error(`Unsupported volume dtype ${dtype}; expected float32 calibrated scalars`);
+  }
   const buffer = await response.arrayBuffer();
-  const values = new Float32Array(buffer);
+  // Copy into a dedicated Float32Array so VTK cannot reinterpret bytes as uint8/display data.
+  const values = Float32Array.from(new Float32Array(buffer));
   const expected = dims.reduce((total, size) => total * size, 1);
   if (!dims.every((size) => size > 0) || values.length !== expected) {
     throw new Error('3D volume dimensions do not match the voxel data');
+  }
+  const headerMin = Number(response.headers.get('X-Value-Min'));
+  const headerMax = Number(response.headers.get('X-Value-Max'));
+  const range = summarize(values);
+  if (Number.isFinite(headerMin) && Number.isFinite(headerMax)) {
+    range.min = headerMin;
+    range.max = headerMax;
   }
   const payload = {
     dims,
     spacing: spacing.map((value) => (Number.isFinite(value) && value > 0 ? value : 1)),
     values,
     reduced,
-    range: summarize(values),
+    range,
+    intensityUnit: response.headers.get('X-Intensity-Unit') || null,
   };
   rememberVolume(key, payload);
   return payload;
@@ -316,10 +465,12 @@ export default function MedicalVolume3DViewer({
   const [status, setStatus] = useState('Loading volume…');
   const [preview, setPreview] = useState(false);
   const [preset, setPreset] = useState(hu ? 'Soft tissue' : 'Brain detail');
+  const [volumeFilter, setVolumeFilter] = useState(hu ? 'bones' : 'Brain detail');
   const [quality, setQuality] = useState(compact ? 'preview' : 'balanced');
   const [dimensions, setDimensions] = useState('');
   const cameraRef = useRef(null);
   const [opacity, setOpacity] = useState(70);
+  const asclepiosOptions = listAsclepiosFilterOptions();
   const [surfaceOn, setSurfaceOn] = useState(false);
   const [huMin, setHuMin] = useState('-1000');
   const [huMax, setHuMax] = useState('-500');
@@ -356,15 +507,19 @@ export default function MedicalVolume3DViewer({
     surface.setVisibility(false);
     renderer.addActor(surface);
 
-    const crossX = makeLineActor([0.95, 0.25, 0.22]);
-    const crossY = makeLineActor([0.95, 0.25, 0.22]);
-    const crossZ = makeLineActor([0.95, 0.25, 0.22]);
-    const probeSource = vtkSphereSource.newInstance({ radius: 1, thetaResolution: 16, phiResolution: 16 });
+    const crossX = makeLineActor([1, 0.2, 0.18]);
+    const crossY = makeLineActor([0.2, 0.85, 0.35]);
+    const crossZ = makeLineActor([0.25, 0.55, 1]);
+    crossX.actor.getProperty().setLineWidth(3);
+    crossY.actor.getProperty().setLineWidth(3);
+    crossZ.actor.getProperty().setLineWidth(3);
+    const probeSource = vtkSphereSource.newInstance({ radius: 1.5, thetaResolution: 20, phiResolution: 20 });
     const probeMapper = vtkMapper.newInstance();
     probeMapper.setInputConnection(probeSource.getOutputPort());
     const probe = vtkActor.newInstance();
     probe.setMapper(probeMapper);
-    probe.getProperty().setColor(1, 0.85, 0.2);
+    probe.getProperty().setColor(1, 0.9, 0.15);
+    probe.getProperty().setOpacity(1);
     probe.setVisibility(false);
     renderer.addActor(crossX.actor);
     renderer.addActor(crossY.actor);
@@ -411,6 +566,7 @@ export default function MedicalVolume3DViewer({
       view, actor, mapper, color, opacityFn, renderer, cubes, surface, orientation,
       crossX, crossY, crossZ, probe, probeSource,
       quality: initialQuality, surfaceReady: false, spacing: [1, 1, 1], dims: [1, 1, 1], shaded: true,
+      blendMode: 'composite',
     };
 
     const setSampleMode = (interacting) => {
@@ -423,8 +579,16 @@ export default function MedicalVolume3DViewer({
           interacting ? Math.round(maxSamplesFor(current.quality) * 0.45) : maxSamplesFor(current.quality),
         );
       }
-      // Keep interaction snappy; restore soft shading when the camera settles.
-      configureVolumeLook(current.actor.getProperty(), current.spacing, { shaded: !interacting && current.shaded !== false });
+      // Keep interaction snappy; restore the active Asclepios/legacy look when the camera settles.
+      const property = current.actor.getProperty();
+      if (interacting) {
+        property.setShade(false);
+        if (property.setUseGradientOpacity) property.setUseGradientOpacity(0, false);
+      } else if (typeof current.restoreLook === 'function') {
+        current.restoreLook();
+      } else {
+        configureVolumeLook(property, current.spacing, { shaded: current.shaded !== false });
+      }
     };
     interactor.onStartAnimation(() => setSampleMode(true));
     interactor.onEndAnimation(() => {
@@ -467,6 +631,7 @@ export default function MedicalVolume3DViewer({
         image.getPointData().setScalars(vtkDataArray.newInstance({
           name: 'Scalars',
           values: payload.values,
+          dataType: 'Float32Array',
           numberOfComponents: 1,
         }));
         current.mapper.setInputData(image);
@@ -480,20 +645,12 @@ export default function MedicalVolume3DViewer({
         current.image = image;
         current.quality = quality;
         current.surfaceReady = false;
-        const extent = Math.min(...payload.spacing) * 1.4;
-        current.probeSource.setRadius(Math.max(extent, 0.6));
-        const activePreset = hu ? 'Soft tissue' : 'Brain detail';
-        setPreset(activePreset);
-        applyTransfer(
-          current.actor.getProperty(),
-          current.color,
-          current.opacityFn,
-          activePreset,
-          hu,
-          payload.range,
-          payload.spacing,
-          true,
-        );
+        const extent = Math.min(...payload.spacing) * 2.2;
+        current.probeSource.setRadius(Math.max(extent, 1.2));
+        const activeFilter = hu ? 'bones' : 'Brain detail';
+        setPreset(hu ? 'Soft tissue' : activeFilter);
+        setVolumeFilter(activeFilter);
+        applyVolumeLook(activeFilter, payload.range, payload.spacing);
         const saved = cameraRef.current;
         if (saved) {
           const camera = current.renderer.getActiveCamera();
@@ -571,14 +728,88 @@ export default function MedicalVolume3DViewer({
     scene.current?.view.getRenderWindow().render();
   }
 
-  function restorePresetTransfer(name = preset) {
+  function setMapperBlend(mode) {
+    const current = scene.current;
+    if (!current?.mapper) return;
+    current.blendMode = mode;
+    if (mode === 'mip') {
+      if (current.mapper.setBlendModeToMaximumIntensity) current.mapper.setBlendModeToMaximumIntensity();
+      else if (current.mapper.setBlendMode) current.mapper.setBlendMode(1);
+    } else if (current.mapper.setBlendModeToComposite) {
+      current.mapper.setBlendModeToComposite();
+    } else if (current.mapper.setBlendMode) {
+      current.mapper.setBlendMode(0);
+    }
+  }
+
+  function applyMipTransfer(range, spacing) {
     const current = scene.current;
     if (!current) return;
-    applyTransfer(current.actor.getProperty(), current.color, current.opacityFn, name, hu, current.range, current.spacing, true);
-    const spacing = Math.min(...(current.spacing || [1]));
-    current.actor.getProperty().setScalarOpacityUnitDistance(0, spacing * Math.max(0.6, 1.5 - opacity / 100));
+    const dataRange = volumeDataRange(range || current.range) || { min: -1000, max: 1000 };
+    const { color, opacityFn } = current;
+    const property = current.actor.getProperty();
+    color.removeAllPoints();
+    opacityFn.removeAllPoints();
+    color.addRGBPoint(dataRange.min, 1, 1, 1);
+    color.addRGBPoint(dataRange.max, 1, 1, 1);
+    opacityFn.addPoint(dataRange.min, 0);
+    opacityFn.addPoint(dataRange.min + (dataRange.max - dataRange.min) * 0.15, 0.05);
+    opacityFn.addPoint(dataRange.max, 0.95);
+    property.setInterpolationTypeToLinear();
+    property.setShade(false);
+    property.setAmbient(0.1);
+    property.setDiffuse(0.7);
+    property.setSpecular(0);
+    if (property.setUseGradientOpacity) property.setUseGradientOpacity(0, false);
+    const distance = Math.min(...(spacing || current.spacing || [1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
+    property.setScalarOpacityUnitDistance(0, distance * Math.max(0.45, 1.2 - opacity / 100));
+    property.modified();
+  }
+
+  function applyVolumeLook(filterId = volumeFilter, range = null, spacing = null) {
+    const current = scene.current;
+    if (!current) return;
+    const nextRange = range || current.range;
+    const nextSpacing = spacing || current.spacing;
+    const run = () => {
+      if (hu && filterId === ASCLEPIOS_MIP_ID) {
+        setMapperBlend('mip');
+        applyMipTransfer(nextRange, nextSpacing);
+      } else if (hu && findAsclepiosFilter(filterId)) {
+        setMapperBlend('composite');
+        applyAsclepiosFilter(
+          current.actor.getProperty(),
+          current.color,
+          current.opacityFn,
+          findAsclepiosFilter(filterId),
+          nextSpacing,
+        );
+        const step = Math.min(...(nextSpacing || [1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
+        current.actor.getProperty().setScalarOpacityUnitDistance(0, step * Math.max(0.55, 1.45 - opacity / 100));
+      } else {
+        setMapperBlend('composite');
+        applyTransfer(
+          current.actor.getProperty(),
+          current.color,
+          current.opacityFn,
+          filterId || preset,
+          hu,
+          nextRange,
+          nextSpacing,
+          true,
+        );
+        const step = Math.min(...(nextSpacing || [1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
+        current.actor.getProperty().setScalarOpacityUnitDistance(0, step * Math.max(0.6, 1.5 - opacity / 100));
+      }
+    };
+    run();
+    current.restoreLook = run;
     current.actor.setVisibility(true);
     current.surface.setVisibility(surfaceOn && current.surfaceReady);
+  }
+
+  function restorePresetTransfer(name = volumeFilter) {
+    applyVolumeLook(name);
   }
 
   function ensureSurface(contourValue) {
@@ -595,7 +826,7 @@ export default function MedicalVolume3DViewer({
     const current = scene.current;
     if (!current) return;
     const dataRange = volumeDataRange(current.range);
-    applyThresholdTransfer(
+    const run = () => applyThresholdTransfer(
       current.actor.getProperty(),
       current.color,
       current.opacityFn,
@@ -605,13 +836,21 @@ export default function MedicalVolume3DViewer({
       opacityPct,
       current.spacing,
       dataRange,
+      huTissueId,
     );
-    const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
-    ensureSurface((low + high) / 2);
-    current.surface.getProperty().setColor(...rgb);
-    current.surface.getProperty().setOpacity(Math.max(0.15, opacityPct / 100));
-    current.surface.setVisibility(true);
+    run();
+    current.restoreLook = run;
     current.actor.setVisibility(true);
+    // Volume thresholding stays separate from surface extraction.
+    if (surfaceOn) {
+      const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
+      ensureSurface((low + high) / 2);
+      current.surface.getProperty().setColor(...rgb);
+      current.surface.getProperty().setOpacity(Math.max(0.2, Math.min(0.85, opacityPct / 100)));
+      current.surface.setVisibility(true);
+    } else {
+      current.surface.setVisibility(false);
+    }
   }
 
   function updateOpacity(value) {
@@ -635,10 +874,21 @@ export default function MedicalVolume3DViewer({
 
   function updatePreset(name) {
     setPreset(name);
+    setVolumeFilter(name);
     setThresholdOn(false);
     setHuError('');
     if (!scene.current) return;
-    restorePresetTransfer(name);
+    applyVolumeLook(name);
+    render();
+  }
+
+  function updateVolumeFilter(id) {
+    setVolumeFilter(id);
+    if (!hu) setPreset(id);
+    setThresholdOn(false);
+    setHuError('');
+    if (!scene.current) return;
+    applyVolumeLook(id);
     render();
   }
 
@@ -659,15 +909,18 @@ export default function MedicalVolume3DViewer({
       setHuError('Volume is still loading.');
       return;
     }
+    // Same rule as 2D: allow any numeric interval; only warn when it misses the true scalar extent.
     const dataRange = volumeDataRange(scene.current.range);
     if (dataRange && (high < dataRange.min || low > dataRange.max)) {
       setHuError(
-        `No overlap with this volume’s intensities (~${Math.round(dataRange.min)}–${Math.round(dataRange.max)}). Adjust the range.`,
+        `No voxels in ${low}–${high} ${unitLabel} (volume scalars ~${Math.round(dataRange.min)}–${Math.round(dataRange.max)}).`,
       );
-      return;
+    } else {
+      setHuError('');
     }
     setThresholdOn(true);
     setHuVisible(true);
+    setMapperBlend('composite');
     paintThreshold(low, high, huColor, huOpacity);
     render();
   }
@@ -676,6 +929,9 @@ export default function MedicalVolume3DViewer({
     setThresholdOn(false);
     setHuError('');
     restorePresetTransfer();
+    if (scene.current) {
+      scene.current.surface.setVisibility(surfaceOn && scene.current.surfaceReady);
+    }
     render();
   }
 
@@ -717,17 +973,26 @@ export default function MedicalVolume3DViewer({
   function toggleSurface() {
     const next = !surfaceOn;
     setSurfaceOn(next);
-    if (!scene.current) return;
-    if (thresholdOn && huVisible) {
-      ensureSurface((Number(huMin) + Number(huMax)) / 2);
-      scene.current.surface.setVisibility(true);
-    } else if (next) {
-      const tissue = scene.current.range?.foreground?.p75;
-      ensureSurface(hu && preset === 'Lung' ? -500 : hu ? 300 : (Number.isFinite(tissue) ? tissue : 0));
-      scene.current.surface.setVisibility(true);
-    } else {
-      scene.current.surface.setVisibility(false);
+    const current = scene.current;
+    if (!current) return;
+    if (!next) {
+      current.surface.setVisibility(false);
+      render();
+      return;
     }
+    const low = Number(huMin);
+    const high = Number(huMax);
+    if (thresholdOn && huVisible && Number.isFinite(low) && Number.isFinite(high)) {
+      // HU-based surface: same interval as volume threshold; contour at mid-HU for inspection.
+      const rgb = THRESHOLD_COLORS[huColor] || THRESHOLD_COLORS.red;
+      ensureSurface((low + high) / 2);
+      current.surface.getProperty().setColor(...rgb);
+      current.surface.getProperty().setOpacity(Math.max(0.2, Math.min(0.85, huOpacity / 100)));
+    } else {
+      const tissue = current.range?.foreground?.p75;
+      ensureSurface(hu && preset === 'Lung' ? -500 : hu ? 300 : (Number.isFinite(tissue) ? tissue : 0));
+    }
+    current.surface.setVisibility(true);
     render();
   }
 
@@ -766,6 +1031,13 @@ export default function MedicalVolume3DViewer({
     <div className="radiology-3d-layout">
       <div className="viewer radiology-stage medical-canvas radiology-3d">
         <div ref={host} className="radiology-3d__canvas" />
+        {showCrosshair && cursor ? (
+          <div className="radiology-overlay radiology-overlay--tl">
+            <span>
+              Cursor A{cursor.axial + 1}/C{cursor.coronal + 1}/S{cursor.sagittal + 1}
+            </span>
+          </div>
+        ) : null}
       </div>
       <aside className="imaging-panel" aria-label="3D imaging controls">
         <div className="imaging-panel__section">
@@ -774,11 +1046,30 @@ export default function MedicalVolume3DViewer({
           <p className="imaging-note">3D volume{preview ? ' · downsampled' : ''} · {quality}</p>
           {status && <p className="imaging-note imaging-note--error">{status}</p>}
           <p className="imaging-note">Use Preview while exploring. Balanced/High are slower.</p>
-          <label>Rendering preset
-            <select value={preset} onChange={(event) => updatePreset(event.target.value)} disabled={thresholdOn && huVisible}>
-              {(hu ? ['Soft tissue', 'Bone', 'Lung'] : ['Grayscale', 'High contrast', 'Brain detail', 'Vascular']).map((item) => <option key={item}>{item}</option>)}
-            </select>
-          </label>
+          {hu ? (
+            <label>3D filter (Asclepios-style)
+              <select
+                value={volumeFilter}
+                onChange={(event) => updateVolumeFilter(event.target.value)}
+                disabled={thresholdOn && huVisible}
+              >
+                {asclepiosOptions.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <label>Rendering preset
+              <select value={preset} onChange={(event) => updatePreset(event.target.value)} disabled={thresholdOn && huVisible}>
+                {['Grayscale', 'High contrast', 'Brain detail', 'Vascular'].map((item) => <option key={item}>{item}</option>)}
+              </select>
+            </label>
+          )}
+          {hu && (
+            <p className="imaging-note">
+              Clinical volume looks from Asclepios (Bones, Soft Skin, Airways, MIP…). Threshold Apply still works as an exact HU mask.
+            </p>
+          )}
           <label>Quality
             <select value={quality} onChange={(event) => changeQuality(event.target.value)}>
               <option value="preview">Preview (fast)</option>
@@ -914,7 +1205,8 @@ export default function MedicalVolume3DViewer({
             {huError && <p className="imaging-note imaging-note--error">{huError}</p>}
             {thresholdOn && (
               <p className="imaging-note">
-                Threshold {huMin}–{huMax} {unitLabel} in volume view. Range highlight, not a diagnosis.
+                HU volume threshold {huMin}–{huMax} {unitLabel}: soft opacity ramp with shading (Asclepios-style).
+                Outside this interval stays transparent. Wide bands can still include air and look cloudy.
               </p>
             )}
           </form>
@@ -928,9 +1220,13 @@ export default function MedicalVolume3DViewer({
           </div>
           <label className="imaging-check">
             <input type="checkbox" checked={surfaceOn} onChange={toggleSurface} />
-            Show isosurface
+            HU surface (isosurface)
           </label>
-          <p className="imaging-note">{hu ? 'Presets use verified Hounsfield units when available.' : 'Presets use this volume’s own intensities.'}</p>
+          <p className="imaging-note">
+            {thresholdOn
+              ? 'Surface uses the same HU interval as Apply, but draws a mid-HU contour for clearer anatomy. Volume and surface are independent modes.'
+              : (hu ? 'CT volumes use calibrated HU (same scale as 2D). Enable surface after Apply for a contour view.' : 'Presets use this volume’s own intensities.')}
+          </p>
         </div>
       </aside>
     </div>
