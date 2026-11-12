@@ -61,8 +61,11 @@ function MprPane({
   onActivate,
   onCursor,
   onWheelSlice,
+  threshold = null,
+  huScale = 'native',
 }) {
   const [url, setUrl] = useState('');
+  const [mask, setMask] = useState('');
   const [error, setError] = useState('');
   const frameRef = useRef(null);
   const markers = PLANE_MARKERS[plane];
@@ -106,6 +109,33 @@ function MprPane({
     if (url) URL.revokeObjectURL(url);
   }, [url]);
 
+  useEffect(() => {
+    if (!threshold) {
+      setMask((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+      return undefined;
+    }
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      index: String(Math.min(Math.max(index, 0), count - 1)),
+      plane,
+      min_hu: String(threshold.low),
+      max_hu: String(threshold.high),
+      color: threshold.color || 'red',
+      scale: huScale,
+    });
+    apiFetch(`${API_BASE_URL}/api/slides/${slideId}/radiology/hu-mask?${params}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const blob = await response.blob();
+        const next = URL.createObjectURL(blob);
+        setMask((current) => { if (current) URL.revokeObjectURL(current); return next; });
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [slideId, plane, index, count, threshold, huScale]);
+
+  useEffect(() => () => { if (mask) URL.revokeObjectURL(mask); }, [mask]);
+
   function handleClick(event) {
     const node = frameRef.current;
     if (!node) return;
@@ -133,6 +163,7 @@ function MprPane({
       {url ? (
         <div className="radiology-mpr__frame" ref={frameRef}>
           <img src={url} alt="" draggable={false} />
+          {mask ? <img className="radiology-stage__overlay" src={mask} alt="" style={{ opacity: (threshold?.opacity ?? 55) / 100 }} /> : null}
           <span className="radiology-mpr__hair radiology-mpr__hair--v" style={{ left: `${hair.x * 100}%` }} />
           <span className="radiology-mpr__hair radiology-mpr__hair--h" style={{ top: `${hair.y * 100}%` }} />
         </div>
@@ -162,6 +193,7 @@ export default function RadiologyMprViewer({
   onActivePlane,
   hu = false,
   showVolume = true,
+  threshold = null,
 }) {
   const counts = planeCounts || { axial: 1, coronal: 1, sagittal: 1 };
 
@@ -189,6 +221,8 @@ export default function RadiologyMprViewer({
           onActivate={onActivePlane}
           onCursor={onCursorChange}
           onWheelSlice={wheelSlice}
+          threshold={threshold}
+          huScale={hu ? 'hu' : 'native'}
         />
       ))}
       {showVolume ? (
@@ -204,6 +238,7 @@ export default function RadiologyMprViewer({
             showCrosshair
             cursor={cursor}
             planeCounts={counts}
+            externalThreshold={threshold}
           />
         </div>
       ) : null}
