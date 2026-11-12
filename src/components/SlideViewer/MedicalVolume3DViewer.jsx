@@ -19,6 +19,7 @@ import vtkPiecewiseFunction from '@kitware/vtk.js/Common/DataModel/PiecewiseFunc
 import vtkImageMarchingCubes from '@kitware/vtk.js/Filters/General/ImageMarchingCubes';
 import vtkMapper from '@kitware/vtk.js/Rendering/Core/Mapper';
 import vtkActor from '@kitware/vtk.js/Rendering/Core/Actor';
+import vtkPlane from '@kitware/vtk.js/Common/DataModel/Plane';
 import vtkAnnotatedCubeActor from '@kitware/vtk.js/Rendering/Core/AnnotatedCubeActor';
 import vtkOrientationMarkerWidget from '@kitware/vtk.js/Interaction/Widgets/OrientationMarkerWidget';
 import AnnotatedCubePresets from '@kitware/vtk.js/Rendering/Core/AnnotatedCubeActor/Presets';
@@ -75,7 +76,7 @@ function summarize(values) {
     all: pick(all),
     foreground: pick(foreground),
     min: Number.isFinite(min) ? min : 0,
-    max: Number.isFinite(max) ? max : 1,
+    max: Number.isFinite(max) ? max : 0,
   };
 }
 
@@ -267,119 +268,48 @@ function applyTransfer(property, color, opacity, preset, hu, range, spacing, sha
   configureVolumeLook(property, spacing, { shaded });
 }
 
-function applyThresholdTransfer(property, color, opacity, low, high, colorName, opacityPct, spacing, dataRange, tissueId = '') {
-  const tint = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
-  // Overlay opacity slider maps to in-band peak; outside the HU interval stays transparent.
-  const peak = Math.max(0.1, Math.min(0.85, opacityPct / 100));
-  const floor = Number.isFinite(dataRange?.min) ? Math.min(dataRange.min, low) - 1 : low - 2048;
-  const ceil = Number.isFinite(dataRange?.max) ? Math.max(dataRange.max, high) + 1 : high + 2048;
-  const lo = Math.min(low, high);
-  const hi = Math.max(low, high);
-  const span = Math.max(1, hi - lo);
-  const edge = Math.max(2, Math.min(span * 0.18, span * 0.45));
-  const band = classifyThresholdBand(lo, hi, tissueId);
-  const a = lo + edge * 0.35;
-  const b = lo + span * 0.45;
-  const c = hi - edge * 0.35;
-
-  // Asclepios-style anatomical base colors, lightly tinted by the overlay color control.
-  let c0 = [0.15, 0.08, 0.06];
-  let c1 = [0.75, 0.35, 0.22];
-  let c2 = [0.98, 0.82, 0.62];
-  let c3 = [1, 0.97, 0.92];
-  let oA = peak * 0.18;
-  let oB = peak * 0.55;
-  let oC = peak * 0.78;
-  let oHi = peak * 0.62;
-
-  if (band === 'lung' || band === 'air') {
-    c0 = [0.08, 0.06, 0.1];
-    c1 = [0.55, 0.35, 0.28];
-    c2 = [0.95, 0.78, 0.6];
-    c3 = [1, 0.94, 0.88];
-    oA = peak * 0.12;
-    oB = peak * 0.42;
-    oC = peak * 0.28;
-    oHi = peak * 0.08;
-  } else if (band === 'fat') {
-    c0 = [0.12, 0.08, 0.04];
-    c1 = [0.78, 0.55, 0.22];
-    c2 = [0.98, 0.88, 0.55];
-    c3 = [1, 0.96, 0.82];
-    oA = peak * 0.16;
-    oB = peak * 0.48;
-    oC = peak * 0.4;
-    oHi = peak * 0.22;
-  } else if (band === 'soft' || band === 'water') {
-    c0 = [0.1, 0.04, 0.04];
-    c1 = [0.72, 0.32, 0.25];
-    c2 = [0.95, 0.7, 0.52];
-    c3 = [1, 0.94, 0.86];
-    oA = peak * 0.14;
-    oB = peak * 0.5;
-    oC = peak * 0.58;
-    oHi = peak * 0.36;
-  } else if (band === 'contrast') {
-    c0 = [0.2, 0.05, 0.05];
-    c1 = [0.85, 0.18, 0.15];
-    c2 = [0.98, 0.55, 0.35];
-    c3 = [1, 0.9, 0.78];
-    oA = peak * 0.1;
-    oB = peak * 0.45;
-    oC = peak * 0.72;
-    oHi = peak * 0.55;
-  } else if (band === 'cancellous' || band === 'cortical' || band === 'metal') {
-    // Asclepios Bones-like: soft entry, dense white highlight at the high end.
-    c0 = [0.45, 0.22, 0.12];
-    c1 = [0.9, 0.55, 0.28];
-    c2 = [0.98, 0.9, 0.75];
-    c3 = [1, 1, 1];
-    oA = peak * 0.12;
-    oB = peak * 0.4;
-    oC = peak * 0.7;
-    oHi = peak * 0.82;
+function thresholdMask(values, low, high) {
+  const mask = new Uint8Array(values.length);
+  let count = 0;
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (value >= low && value <= high) {
+      mask[index] = 1;
+      count += 1;
+    }
   }
+  return { mask, count };
+}
 
-  c0 = mixRgb(c0, tint, 0.28);
-  c1 = mixRgb(c1, tint, 0.32);
-  c2 = mixRgb(c2, tint, 0.22);
-  c3 = mixRgb(c3, tint, 0.12);
-
+function applyThresholdTransfer(property, color, opacity, colorName, opacityPct, spacing) {
+  const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
+  const peak = opacityPct <= 0 ? 0 : (opacityPct / 100) * 0.55;
   color.removeAllPoints();
   opacity.removeAllPoints();
-  // Soft HU ramp: fully transparent outside [lo, hi], Asclepios-style curve inside.
-  opacity.addPoint(floor, 0);
-  opacity.addPoint(lo - 0.5, 0);
-  opacity.addPoint(lo, 0);
-  opacity.addPoint(a, oA);
-  opacity.addPoint(b, oB);
-  opacity.addPoint(Math.max(b, c), oC);
-  opacity.addPoint(hi, oHi);
-  opacity.addPoint(hi + 0.5, 0);
-  opacity.addPoint(ceil, 0);
-
-  color.addRGBPoint(floor, ...c0);
-  color.addRGBPoint(lo, ...c0);
-  color.addRGBPoint(a, ...c1);
-  color.addRGBPoint(b, ...c2);
-  color.addRGBPoint(Math.max(b, c), ...c3);
-  color.addRGBPoint(hi, ...c3);
-  color.addRGBPoint(ceil, ...c3);
-
-  configureVolumeLook(property, spacing, { shaded: true });
-  const distance = Math.min(...(spacing || [1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
-  property.setScalarOpacityUnitDistance(0, distance * 0.62);
+  color.addRGBPoint(0, ...rgb);
+  color.addRGBPoint(1, ...rgb);
+  // Only an actual selected voxel (value 1) is colored. Values in between
+  // come from interpolation and must stay invisible.
+  opacity.addPoint(-1e6, 0);
+  opacity.addPoint(0, 0);
+  opacity.addPoint(0.99, 0);
+  opacity.addPoint(1, peak);
+  opacity.addPoint(1.01, 0);
+  opacity.addPoint(1e6, 0);
+  property.setInterpolationTypeToNearest();
+  property.setShade(false);
+  property.setAmbient(1);
+  property.setDiffuse(0);
+  property.setSpecular(0);
+  if (property.setUseGradientOpacity) property.setUseGradientOpacity(0, false);
+  const step = Math.min(...(spacing || [1, 1, 1]));
+  property.setScalarOpacityUnitDistance(0, Math.max(step * 6, 2));
   property.modified();
 }
 
 function volumeDataRange(range) {
   if (Number.isFinite(range?.min) && Number.isFinite(range?.max)) {
-    return {
-      min: range.min,
-      max: range.max,
-      span: Math.max(1e-3, range.max - range.min),
-      foreground: range.foreground || range.all,
-    };
+    return { min: range.min, max: range.max, span: Math.max(1e-3, range.max - range.min), foreground: range.foreground || range.all };
   }
   const all = range?.all;
   if (!all) return null;
@@ -459,14 +389,15 @@ export default function MedicalVolume3DViewer({
   cursor = null,
   planeCounts = null,
   showCrosshair = false,
+  externalThreshold = null,
+  onCommitThreshold = null,
 }) {
   const host = useRef(null);
   const scene = useRef(null);
   const [status, setStatus] = useState('Loading volume…');
   const [preview, setPreview] = useState(false);
   const [preset, setPreset] = useState(hu ? 'Soft tissue' : 'Brain detail');
-  const [volumeFilter, setVolumeFilter] = useState(hu ? 'bones' : 'Brain detail');
-  const [quality, setQuality] = useState(compact ? 'preview' : 'balanced');
+  const [quality, setQuality] = useState('balanced');
   const [dimensions, setDimensions] = useState('');
   const cameraRef = useRef(null);
   const [opacity, setOpacity] = useState(70);
@@ -480,13 +411,18 @@ export default function MedicalVolume3DViewer({
   const [thresholdOn, setThresholdOn] = useState(false);
   const [huError, setHuError] = useState('');
   const [huTissueId, setHuTissueId] = useState(hu ? 'air' : '');
+  const [isolate, setIsolate] = useState(false);
+  const [clipAxis, setClipAxis] = useState('none');
+  const [clipPos, setClipPos] = useState(50);
+  const externalRef = useRef(externalThreshold);
+  externalRef.current = externalThreshold;
   const unitLabel = hu ? 'HU' : 'intensity';
   const selectedTissue = findHuTissuePreset(huTissueId);
 
   useEffect(() => {
     const node = host.current;
     if (!node) return undefined;
-    const initialQuality = compact ? 'preview' : 'balanced';
+    const initialQuality = 'balanced';
     const view = vtkGenericRenderWindow.newInstance({ background: [0.02, 0.02, 0.03] });
     view.setContainer(node);
     view.resize();
@@ -499,9 +435,19 @@ export default function MedicalVolume3DViewer({
     actor.getProperty().setRGBTransferFunction(0, color);
     actor.getProperty().setScalarOpacity(0, opacityFn);
     renderer.addVolume(actor);
+    const overlayColor = vtkColorTransferFunction.newInstance();
+    const overlayOpacity = vtkPiecewiseFunction.newInstance();
+    const overlay = vtkVolume.newInstance();
+    const overlayMapper = vtkVolumeMapper.newInstance();
+    overlay.setMapper(overlayMapper);
+    overlay.getProperty().setRGBTransferFunction(0, overlayColor);
+    overlay.getProperty().setScalarOpacity(0, overlayOpacity);
+    overlay.setVisibility(false);
+    renderer.addVolume(overlay);
     const cubes = vtkImageMarchingCubes.newInstance({ contourValue: hu ? 300 : 80, computeNormals: true });
     const surfaceMapper = vtkMapper.newInstance();
     surfaceMapper.setInputConnection(cubes.getOutputPort());
+    surfaceMapper.setScalarVisibility(false);
     const surface = vtkActor.newInstance();
     surface.setMapper(surfaceMapper);
     surface.setVisibility(false);
@@ -562,8 +508,10 @@ export default function MedicalVolume3DViewer({
     if (mapper.setAutoAdjustSampleDistance) mapper.setAutoAdjustSampleDistance(true);
     if (mapper.setMaximumSamplesPerRay) mapper.setMaximumSamplesPerRay(maxSamplesFor(initialQuality));
     if (mapper.setBlendModeToComposite) mapper.setBlendModeToComposite();
+    const clipPlane = vtkPlane.newInstance();
     scene.current = {
       view, actor, mapper, color, opacityFn, renderer, cubes, surface, orientation,
+      overlay, overlayMapper, overlayColor, overlayOpacity, clipPlane, clipOn: false,
       crossX, crossY, crossZ, probe, probeSource,
       quality: initialQuality, surfaceReady: false, spacing: [1, 1, 1], dims: [1, 1, 1], shaded: true,
       blendMode: 'composite',
@@ -574,6 +522,7 @@ export default function MedicalVolume3DViewer({
       if (!current?.spacing) return;
       const factor = sampleFactorFor(current.quality || initialQuality, interacting);
       current.mapper.setSampleDistance(Math.min(...current.spacing) * factor);
+      if (current.overlayMapper) current.overlayMapper.setSampleDistance(Math.min(...current.spacing) * factor);
       if (current.mapper.setMaximumSamplesPerRay) {
         current.mapper.setMaximumSamplesPerRay(
           interacting ? Math.round(maxSamplesFor(current.quality) * 0.45) : maxSamplesFor(current.quality),
@@ -617,7 +566,6 @@ export default function MedicalVolume3DViewer({
     const controller = new AbortController();
     let cancelled = false;
     setStatus('Loading volume…');
-    setThresholdOn(false);
     setHuError('');
     current.surface.setVisibility(false);
     current.surfaceReady = false;
@@ -635,6 +583,7 @@ export default function MedicalVolume3DViewer({
           numberOfComponents: 1,
         }));
         current.mapper.setInputData(image);
+        current.overlay.setVisibility(false);
         current.mapper.setSampleDistance(Math.min(...payload.spacing) * sampleFactorFor(quality, false));
         if (current.mapper.setMaximumSamplesPerRay) {
           current.mapper.setMaximumSamplesPerRay(maxSamplesFor(quality));
@@ -645,12 +594,21 @@ export default function MedicalVolume3DViewer({
         current.image = image;
         current.quality = quality;
         current.surfaceReady = false;
-        const extent = Math.min(...payload.spacing) * 2.2;
-        current.probeSource.setRadius(Math.max(extent, 1.2));
-        const activeFilter = hu ? 'bones' : 'Brain detail';
-        setPreset(hu ? 'Soft tissue' : activeFilter);
-        setVolumeFilter(activeFilter);
-        applyVolumeLook(activeFilter, payload.range, payload.spacing);
+        const extent = Math.min(...payload.spacing) * 1.4;
+        current.probeSource.setRadius(Math.max(extent, 0.6));
+        const ctLike = hu || (payload.range?.min ?? 0) < -200;
+        const activePreset = ctLike ? 'Soft tissue' : 'Grayscale';
+        setPreset(activePreset);
+        applyTransfer(
+          current.actor.getProperty(),
+          current.color,
+          current.opacityFn,
+          activePreset,
+          ctLike,
+          payload.range,
+          payload.spacing,
+          true,
+        );
         const saved = cameraRef.current;
         if (saved) {
           const camera = current.renderer.getActiveCamera();
@@ -668,14 +626,22 @@ export default function MedicalVolume3DViewer({
         setDimensions(payload.dims.join(' × '));
         setPreview(payload.reduced);
         setStatus('');
-        if (!hu) {
+        const shared = externalRef.current;
+        if (shared) {
+          setHuMin(String(shared.low));
+          setHuMax(String(shared.high));
+          setHuColor(shared.color);
+          setHuOpacity(shared.opacity ?? 55);
+          setThresholdOn(true);
+          setHuVisible(true);
+        } else if (!hu) {
           const mid = intensityPresetRange('mid', payload.range);
           if (mid) {
             setHuTissueId('');
             setHuMin(String(Math.round(mid[0])));
             setHuMax(String(Math.round(mid[1])));
           }
-        } else {
+        } else if (!thresholdOn) {
           const air = findHuTissuePreset('air');
           setHuTissueId('air');
           setHuMin(String(air.min));
@@ -822,73 +788,102 @@ export default function MedicalVolume3DViewer({
     if (Number.isFinite(contourValue)) current.cubes.setContourValue(contourValue);
   }
 
-  function paintThreshold(low, high, colorName, opacityPct) {
+  function thresholdSurface(low, high) {
     const current = scene.current;
-    if (!current) return;
-    const dataRange = volumeDataRange(current.range);
-    const run = () => applyThresholdTransfer(
-      current.actor.getProperty(),
-      current.color,
-      current.opacityFn,
-      low,
-      high,
+    const scalars = current?.image?.getPointData()?.getScalars()?.getData();
+    if (!current || !scalars) return;
+    const mask = new Uint8Array(scalars.length);
+    for (let index = 0; index < scalars.length; index += 1) {
+      const value = scalars[index];
+      mask[index] = value >= low && value <= high ? 1 : 0;
+    }
+    const maskImage = vtkImageData.newInstance();
+    maskImage.setDimensions(...current.dims);
+    maskImage.setSpacing(...current.spacing);
+    maskImage.getPointData().setScalars(vtkDataArray.newInstance({ name: 'ThresholdMask', values: mask, numberOfComponents: 1 }));
+    current.cubes.setInputData(maskImage);
+    current.cubes.setContourValue(0.5);
+    current.surfaceReady = true;
+  }
+
+  function paintThreshold(low, high, colorName, opacityPct, rebuildSurface = false) {
+    const current = scene.current;
+    const scalars = current?.image?.getPointData()?.getScalars()?.getData();
+    if (!current || !scalars) return;
+    const isolated = Boolean(externalRef.current?.isolate || isolate);
+    current.actor.setVisibility(!isolated);
+    if (!isolated) {
+      const step = Math.min(...(current.spacing || [1]));
+      current.actor.getProperty().setScalarOpacityUnitDistance(0, step * 8);
+    }
+    const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
+    const property = current.surface.getProperty();
+    property.setColor(...rgb);
+    property.setOpacity(opacityPct <= 0 ? 0 : opacityPct / 100);
+    property.setAmbient(0.2);
+    property.setDiffuse(0.75);
+    property.setSpecular(0.3);
+    property.setSpecularPower(16);
+    const { mask, count } = thresholdMask(scalars, low, high);
+    if (!count) {
+      current.overlay.setVisibility(false);
+      current.surface.setVisibility(false);
+      current.surfaceReady = false;
+      return;
+    }
+    const maskImage = vtkImageData.newInstance();
+    maskImage.setDimensions(...current.dims);
+    maskImage.setSpacing(...current.spacing);
+    maskImage.setOrigin(...(current.image.getOrigin?.() || [0, 0, 0]));
+    maskImage.getPointData().setScalars(vtkDataArray.newInstance({
+      name: 'ThresholdMask',
+      values: Float32Array.from(mask),
+      numberOfComponents: 1,
+    }));
+    current.overlayMapper.setInputData(maskImage);
+    if (current.overlayMapper.setBlendModeToComposite) current.overlayMapper.setBlendModeToComposite();
+    if (current.overlayMapper.setAutoAdjustSampleDistance) current.overlayMapper.setAutoAdjustSampleDistance(false);
+    current.overlayMapper.setSampleDistance(Math.min(...(current.spacing || [1])) * 0.5);
+    current.surfaceReady = true;
+    applyThresholdTransfer(
+      current.overlay.getProperty(),
+      current.overlayColor,
+      current.overlayOpacity,
       colorName,
       opacityPct,
       current.spacing,
-      dataRange,
-      huTissueId,
     );
-    run();
-    current.restoreLook = run;
-    current.actor.setVisibility(true);
-    // Volume thresholding stays separate from surface extraction.
-    if (surfaceOn) {
-      const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
-      ensureSurface((low + high) / 2);
-      current.surface.getProperty().setColor(...rgb);
-      current.surface.getProperty().setOpacity(Math.max(0.2, Math.min(0.85, opacityPct / 100)));
-      current.surface.setVisibility(true);
-    } else {
-      current.surface.setVisibility(false);
-    }
+    current.overlay.setVisibility(opacityPct > 0 && current.surfaceReady);
+    current.surface.setVisibility(false);
   }
 
   function updateOpacity(value) {
     setOpacity(value);
     const current = scene.current;
     if (!current) return;
+    const spacing = Math.min(...(current.spacing || [1]));
+    const contextDim = thresholdOn && huVisible && !(externalRef.current?.isolate || isolate) ? 4 : 1;
+    current.actor.getProperty().setScalarOpacityUnitDistance(0, spacing * Math.max(0.6, 1.5 - value / 100) * contextDim);
     if (thresholdOn && huVisible) {
       const low = Number(huMin);
       const high = Number(huMax);
       if (Number.isFinite(low) && Number.isFinite(high)) {
         paintThreshold(low, high, huColor, huOpacity);
-        render();
-        return;
       }
     }
-    const spacing = Math.min(...(current.spacing || [1]));
-    current.actor.getProperty().setScalarOpacityUnitDistance(0, spacing * Math.max(0.6, 1.5 - value / 100));
-    current.surface.getProperty().setOpacity(value / 100);
+    if (!(thresholdOn && huVisible)) current.surface.getProperty().setOpacity(value / 100);
     render();
   }
 
   function updatePreset(name) {
     setPreset(name);
-    setVolumeFilter(name);
-    setThresholdOn(false);
     setHuError('');
     if (!scene.current) return;
-    applyVolumeLook(name);
-    render();
-  }
-
-  function updateVolumeFilter(id) {
-    setVolumeFilter(id);
-    if (!hu) setPreset(id);
-    setThresholdOn(false);
-    setHuError('');
-    if (!scene.current) return;
-    applyVolumeLook(id);
+    const ctLike = hu || (scene.current.range?.min ?? 0) < -200;
+    applyTransfer(scene.current.actor.getProperty(), scene.current.color, scene.current.opacityFn, name, ctLike, scene.current.range, scene.current.spacing, true);
+    const shared = externalRef.current;
+    if (shared) paintThreshold(shared.low, shared.high, shared.color, shared.opacity ?? huOpacity, false);
+    else if (thresholdOn && huVisible) paintThreshold(Number(huMin), Number(huMax), huColor, huOpacity, false);
     render();
   }
 
@@ -920,20 +915,76 @@ export default function MedicalVolume3DViewer({
     }
     setThresholdOn(true);
     setHuVisible(true);
-    setMapperBlend('composite');
-    paintThreshold(low, high, huColor, huOpacity);
+    paintThreshold(low, high, huColor, huOpacity, true);
+    onCommitThreshold?.({ low, high, color: huColor, opacity: huOpacity, isolate: Boolean(externalRef.current?.isolate || isolate) });
     render();
   }
 
   function clearThreshold() {
     setThresholdOn(false);
+    setIsolate(false);
     setHuError('');
-    restorePresetTransfer();
-    if (scene.current) {
-      scene.current.surface.setVisibility(surfaceOn && scene.current.surfaceReady);
+    if (scene.current?.overlay) {
+      scene.current.overlay.setVisibility(false);
+      scene.current.actor.setVisibility(true);
     }
+    restorePresetTransfer();
+    onCommitThreshold?.(null);
     render();
   }
+
+  useEffect(() => {
+    const current = scene.current;
+    if (!current?.image || !current.overlay) return;
+    if (!externalThreshold) {
+      if (current.overlay.getVisibility() || current.surface.getVisibility()) {
+        current.overlay.setVisibility(false);
+        current.surface.setVisibility(false);
+        current.actor.setVisibility(true);
+        applyTransfer(current.actor.getProperty(), current.color, current.opacityFn, preset, hu || (current.range?.min ?? 0) < -200, current.range, current.spacing, true);
+        current.view.getRenderWindow().render();
+      }
+      return;
+    }
+    setHuMin(String(externalThreshold.low));
+    setHuMax(String(externalThreshold.high));
+    setHuColor(externalThreshold.color);
+    setHuOpacity(externalThreshold.opacity ?? 55);
+    setThresholdOn(true);
+    setHuVisible(true);
+    paintThreshold(externalThreshold.low, externalThreshold.high, externalThreshold.color, externalThreshold.opacity ?? 55, true);
+    current.view.getRenderWindow().render();
+  }, [externalThreshold, dimensions, isolate]);
+
+  useEffect(() => {
+    const current = scene.current;
+    if (!current?.clipPlane || !current.dims) return;
+    const [sx, sy, sz] = current.spacing || [1, 1, 1];
+    const [dx, dy, dz] = current.dims;
+    const size = [sx * Math.max(dx - 1, 1), sy * Math.max(dy - 1, 1), sz * Math.max(dz - 1, 1)];
+    if (clipAxis === 'none') {
+      current.mapper.removeAllClippingPlanes();
+      current.overlayMapper.removeAllClippingPlanes();
+      current.surface.getMapper().removeAllClippingPlanes();
+      current.clipOn = false;
+    } else {
+      const normal = clipAxis === 'sagittal' ? [1, 0, 0] : clipAxis === 'coronal' ? [0, 1, 0] : [0, 0, 1];
+      const fraction = clipPos / 100;
+      current.clipPlane.setNormal(normal[0], normal[1], normal[2]);
+      current.clipPlane.setOrigin(
+        clipAxis === 'sagittal' ? size[0] * fraction : size[0] / 2,
+        clipAxis === 'coronal' ? size[1] * fraction : size[1] / 2,
+        clipAxis === 'axial' ? size[2] * fraction : size[2] / 2,
+      );
+      if (!current.clipOn) {
+        current.mapper.addClippingPlane(current.clipPlane);
+        current.overlayMapper.addClippingPlane(current.clipPlane);
+        current.surface.getMapper().addClippingPlane(current.clipPlane);
+        current.clipOn = true;
+      }
+    }
+    current.view.getRenderWindow().render();
+  }, [clipAxis, clipPos, dimensions]);
 
   function toggleOverlay(checked) {
     setHuVisible(checked);
@@ -944,6 +995,8 @@ export default function MedicalVolume3DViewer({
       const high = Number(huMax);
       if (Number.isFinite(low) && Number.isFinite(high)) paintThreshold(low, high, huColor, huOpacity);
     } else {
+      current.overlay?.setVisibility(false);
+      current.actor.setVisibility(true);
       restorePresetTransfer();
       current.surface.setVisibility(surfaceOn && current.surfaceReady);
     }
@@ -973,21 +1026,16 @@ export default function MedicalVolume3DViewer({
   function toggleSurface() {
     const next = !surfaceOn;
     setSurfaceOn(next);
-    const current = scene.current;
-    if (!current) return;
-    if (!next) {
-      current.surface.setVisibility(false);
-      render();
-      return;
-    }
-    const low = Number(huMin);
-    const high = Number(huMax);
-    if (thresholdOn && huVisible && Number.isFinite(low) && Number.isFinite(high)) {
-      // HU-based surface: same interval as volume threshold; contour at mid-HU for inspection.
-      const rgb = THRESHOLD_COLORS[huColor] || THRESHOLD_COLORS.red;
-      ensureSurface((low + high) / 2);
-      current.surface.getProperty().setColor(...rgb);
-      current.surface.getProperty().setOpacity(Math.max(0.2, Math.min(0.85, huOpacity / 100)));
+    if (!scene.current) return;
+    if (thresholdOn && huVisible && next) {
+      const low = Number(huMin);
+      const high = Number(huMax);
+      if (Number.isFinite(low) && Number.isFinite(high)) thresholdSurface(low, high);
+      scene.current.surface.setVisibility(true);
+    } else if (next) {
+      const tissue = scene.current.range?.foreground?.p75;
+      ensureSurface(hu && preset === 'Lung' ? -500 : hu ? 300 : (Number.isFinite(tissue) ? tissue : 0));
+      scene.current.surface.setVisibility(true);
     } else {
       const tissue = current.range?.foreground?.p75;
       ensureSurface(hu && preset === 'Lung' ? -500 : hu ? 300 : (Number.isFinite(tissue) ? tissue : 0));
@@ -1199,6 +1247,28 @@ export default function MedicalVolume3DViewer({
               <input type="range" min="0" max="100" value={huOpacity} onChange={(event) => updateThresholdOpacity(Number(event.target.value))} />
             </label>
             <div className="imaging-actions">
+              <label className="imaging-check"><input type="checkbox" checked={Boolean(externalThreshold?.isolate) || isolate} onChange={(event) => {
+                const checked = event.target.checked;
+                setIsolate(checked);
+                const low = Number(huMin);
+                const high = Number(huMax);
+                if (onCommitThreshold && Number.isFinite(low) && Number.isFinite(high) && thresholdOn) {
+                  onCommitThreshold({ low, high, color: huColor, opacity: huOpacity, isolate: checked });
+                }
+              }} /> Isolate range</label>
+              <label>Clip
+                <select value={clipAxis} onChange={(event) => setClipAxis(event.target.value)}>
+                  <option value="none">Off</option>
+                  <option value="axial">Axial</option>
+                  <option value="coronal">Coronal</option>
+                  <option value="sagittal">Sagittal</option>
+                </select>
+              </label>
+              {clipAxis !== 'none' && (
+                <label>Clip position {clipPos}%
+                  <input type="range" min="0" max="100" value={clipPos} onChange={(event) => setClipPos(Number(event.target.value))} />
+                </label>
+              )}
               <button type="submit" className="btn-control-secondary">Apply</button>
               <button type="button" className="btn-control-secondary" onClick={clearThreshold}>Clear</button>
             </div>
