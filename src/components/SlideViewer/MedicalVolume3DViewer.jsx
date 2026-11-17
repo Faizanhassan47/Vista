@@ -25,6 +25,9 @@ import vtkOrientationMarkerWidget from '@kitware/vtk.js/Interaction/Widgets/Orie
 import AnnotatedCubePresets from '@kitware/vtk.js/Rendering/Core/AnnotatedCubeActor/Presets';
 import vtkLineSource from '@kitware/vtk.js/Filters/Sources/LineSource';
 import vtkSphereSource from '@kitware/vtk.js/Filters/Sources/SphereSource';
+import vtkPolyData from '@kitware/vtk.js/Common/DataModel/PolyData';
+import { keepLargestComponent, thresholdMask } from './thresholdMask';
+import { boxCorners, boxDefinitions, clampBoxFractions, planeDefinition } from './volumeClip';
 
 const VOLUME_CACHE = new Map();
 const VOLUME_CACHE_LIMIT = 6;
@@ -268,42 +271,30 @@ function applyTransfer(property, color, opacity, preset, hu, range, spacing, sha
   configureVolumeLook(property, spacing, { shaded });
 }
 
-function thresholdMask(values, low, high) {
-  const mask = new Uint8Array(values.length);
-  let count = 0;
-  for (let index = 0; index < values.length; index += 1) {
-    const value = values[index];
-    if (value >= low && value <= high) {
-      mask[index] = 1;
-      count += 1;
-    }
-  }
-  return { mask, count };
-}
-
-function applyThresholdTransfer(property, color, opacity, colorName, opacityPct, spacing) {
+function applyThresholdTransfer(property, color, opacity, colorName, opacityPct, spacing, dims) {
   const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
-  const peak = opacityPct <= 0 ? 0 : (opacityPct / 100) * 0.55;
+  const peak = opacityPct <= 0 ? 0 : Math.min(0.55, opacityPct / 100);
   color.removeAllPoints();
   opacity.removeAllPoints();
-  color.addRGBPoint(0, ...rgb);
+  color.addRGBPoint(0, 0, 0, 0);
+  color.addRGBPoint(0.5, ...rgb);
   color.addRGBPoint(1, ...rgb);
-  // Only an actual selected voxel (value 1) is colored. Values in between
-  // come from interpolation and must stay invisible.
-  opacity.addPoint(-1e6, 0);
+  // 0 is unselected. Values under 0.5 stay clear so a sample between
+  // a selected voxel and its neighbor does not paint that neighbor.
   opacity.addPoint(0, 0);
-  opacity.addPoint(0.99, 0);
+  opacity.addPoint(0.5, 0);
   opacity.addPoint(1, peak);
-  opacity.addPoint(1.01, 0);
-  opacity.addPoint(1e6, 0);
   property.setInterpolationTypeToNearest();
   property.setShade(false);
   property.setAmbient(1);
   property.setDiffuse(0);
   property.setSpecular(0);
   if (property.setUseGradientOpacity) property.setUseGradientOpacity(0, false);
-  const step = Math.min(...(spacing || [1, 1, 1]));
-  property.setScalarOpacityUnitDistance(0, Math.max(step * 6, 2));
+  const step = Math.min(...(spacing || [1, 1, 1]).map((value) => (Number.isFinite(value) && value > 0 ? value : 1)));
+  void dims;
+  // About 4 cm of selected tissue reaches the slider opacity.
+  // One voxel of distance turns a lung or a bone into a solid block.
+  property.setScalarOpacityUnitDistance(0, Math.max(step * 18, 12));
   property.modified();
 }
 
@@ -363,10 +354,12 @@ async function fetchVolume(slideId, quality, signal) {
   if (!dims.every((size) => size > 0) || values.length !== expected) {
     throw new Error('3D volume dimensions do not match the voxel data');
   }
-  const headerMin = Number(response.headers.get('X-Value-Min'));
-  const headerMax = Number(response.headers.get('X-Value-Max'));
+  const headerMinRaw = response.headers.get('X-Value-Min');
+  const headerMaxRaw = response.headers.get('X-Value-Max');
+  const headerMin = headerMinRaw == null || headerMinRaw === '' ? NaN : Number(headerMinRaw);
+  const headerMax = headerMaxRaw == null || headerMaxRaw === '' ? NaN : Number(headerMaxRaw);
   const range = summarize(values);
-  if (Number.isFinite(headerMin) && Number.isFinite(headerMax)) {
+  if (Number.isFinite(headerMin) && Number.isFinite(headerMax) && headerMax > headerMin) {
     range.min = headerMin;
     range.max = headerMax;
   }
@@ -403,6 +396,11 @@ export default function MedicalVolume3DViewer({
   const [opacity, setOpacity] = useState(70);
   const asclepiosOptions = listAsclepiosFilterOptions();
   const [surfaceOn, setSurfaceOn] = useState(false);
+  const [largestOnly, setLargestOnly] = useState(false);
+  const surfaceOnRef = useRef(false);
+  const largestOnlyRef = useRef(false);
+  surfaceOnRef.current = surfaceOn;
+  largestOnlyRef.current = largestOnly;
   const [huMin, setHuMin] = useState('-1000');
   const [huMax, setHuMax] = useState('-500');
   const [huColor, setHuColor] = useState('red');
@@ -412,8 +410,14 @@ export default function MedicalVolume3DViewer({
   const [huError, setHuError] = useState('');
   const [huTissueId, setHuTissueId] = useState(hu ? 'air' : '');
   const [isolate, setIsolate] = useState(false);
-  const [clipAxis, setClipAxis] = useState('none');
-  const [clipPos, setClipPos] = useState(50);
+  const [clipEnabled, setClipEnabled] = useState(false);
+  const [clipMode, setClipMode] = useState('plane');
+  const [clipAxisIndex, setClipAxisIndex] = useState(0);
+  const [clipPos, setClipPos] = useState(0);
+  const [clipReverse, setClipReverse] = useState(false);
+  const [clipBox, setClipBox] = useState({
+    xMin: 0, xMax: 100, yMin: 0, yMax: 100, zMin: 0, zMax: 100,
+  });
   const externalRef = useRef(externalThreshold);
   externalRef.current = externalThreshold;
   const unitLabel = hu ? 'HU' : 'intensity';
@@ -508,10 +512,25 @@ export default function MedicalVolume3DViewer({
     if (mapper.setAutoAdjustSampleDistance) mapper.setAutoAdjustSampleDistance(true);
     if (mapper.setMaximumSamplesPerRay) mapper.setMaximumSamplesPerRay(maxSamplesFor(initialQuality));
     if (mapper.setBlendModeToComposite) mapper.setBlendModeToComposite();
-    const clipPlane = vtkPlane.newInstance();
+    const clipPlanes = Array.from({ length: 6 }, () => vtkPlane.newInstance());
+    const outlinePoly = vtkPolyData.newInstance();
+    outlinePoly.getPoints().setData(new Float32Array(24), 3);
+    outlinePoly.getLines().setData(Uint32Array.from([
+      2, 0, 1, 2, 2, 3, 2, 4, 5, 2, 6, 7,
+      2, 0, 2, 2, 1, 3, 2, 4, 6, 2, 5, 7,
+      2, 0, 4, 2, 1, 5, 2, 2, 6, 2, 3, 7,
+    ]));
+    const outlineMapper = vtkMapper.newInstance();
+    outlineMapper.setInputData(outlinePoly);
+    const outline = vtkActor.newInstance();
+    outline.setMapper(outlineMapper);
+    outline.getProperty().setColor(0.95, 0.75, 0.2);
+    outline.getProperty().setLineWidth(1);
+    outline.setVisibility(false);
+    renderer.addActor(outline);
     scene.current = {
       view, actor, mapper, color, opacityFn, renderer, cubes, surface, orientation,
-      overlay, overlayMapper, overlayColor, overlayOpacity, clipPlane, clipOn: false,
+      overlay, overlayMapper, overlayColor, overlayOpacity, clipPlanes, outline, outlinePoly,
       crossX, crossY, crossZ, probe, probeSource,
       quality: initialQuality, surfaceReady: false, spacing: [1, 1, 1], dims: [1, 1, 1], shaded: true,
       blendMode: 'composite',
@@ -522,7 +541,6 @@ export default function MedicalVolume3DViewer({
       if (!current?.spacing) return;
       const factor = sampleFactorFor(current.quality || initialQuality, interacting);
       current.mapper.setSampleDistance(Math.min(...current.spacing) * factor);
-      if (current.overlayMapper) current.overlayMapper.setSampleDistance(Math.min(...current.spacing) * factor);
       if (current.mapper.setMaximumSamplesPerRay) {
         current.mapper.setMaximumSamplesPerRay(
           interacting ? Math.round(maxSamplesFor(current.quality) * 0.45) : maxSamplesFor(current.quality),
@@ -537,6 +555,10 @@ export default function MedicalVolume3DViewer({
         current.restoreLook();
       } else {
         configureVolumeLook(property, current.spacing, { shaded: current.shaded !== false });
+      }
+      if (current.thresholdOn) {
+        const step = Math.min(...current.spacing);
+        current.actor.getProperty().setScalarOpacityUnitDistance(0, step * 36);
       }
     };
     interactor.onStartAnimation(() => setSampleMode(true));
@@ -814,7 +836,7 @@ export default function MedicalVolume3DViewer({
     current.actor.setVisibility(!isolated);
     if (!isolated) {
       const step = Math.min(...(current.spacing || [1]));
-      current.actor.getProperty().setScalarOpacityUnitDistance(0, step * 8);
+      current.actor.getProperty().setScalarOpacityUnitDistance(0, step * 36);
     }
     const rgb = THRESHOLD_COLORS[colorName] || THRESHOLD_COLORS.red;
     const property = current.surface.getProperty();
@@ -824,13 +846,16 @@ export default function MedicalVolume3DViewer({
     property.setDiffuse(0.75);
     property.setSpecular(0.3);
     property.setSpecularPower(16);
-    const { mask, count } = thresholdMask(scalars, low, high);
+    const { mask, count: matched } = thresholdMask(scalars, low, high);
+    const count = largestOnlyRef.current ? keepLargestComponent(mask, current.dims, current.spacing) : matched;
     if (!count) {
       current.overlay.setVisibility(false);
       current.surface.setVisibility(false);
       current.surfaceReady = false;
+      current.thresholdOn = false;
       return;
     }
+    current.thresholdOn = true;
     const maskImage = vtkImageData.newInstance();
     maskImage.setDimensions(...current.dims);
     maskImage.setSpacing(...current.spacing);
@@ -843,7 +868,8 @@ export default function MedicalVolume3DViewer({
     current.overlayMapper.setInputData(maskImage);
     if (current.overlayMapper.setBlendModeToComposite) current.overlayMapper.setBlendModeToComposite();
     if (current.overlayMapper.setAutoAdjustSampleDistance) current.overlayMapper.setAutoAdjustSampleDistance(false);
-    current.overlayMapper.setSampleDistance(Math.min(...(current.spacing || [1])) * 0.5);
+    const step = Math.min(...(current.spacing || [1]));
+    current.overlayMapper.setSampleDistance(step);
     current.surfaceReady = true;
     applyThresholdTransfer(
       current.overlay.getProperty(),
@@ -852,9 +878,18 @@ export default function MedicalVolume3DViewer({
       colorName,
       opacityPct,
       current.spacing,
+      current.dims,
     );
     current.overlay.setVisibility(opacityPct > 0 && current.surfaceReady);
-    current.surface.setVisibility(false);
+    if (surfaceOnRef.current) {
+      current.cubes.setInputData(maskImage);
+      current.cubes.setContourValue(0.5);
+      current.surface.getProperty().setColor(...rgb);
+      current.surface.getProperty().setOpacity(Math.max(0.2, opacityPct / 100));
+      current.surface.setVisibility(true);
+    } else {
+      current.surface.setVisibility(false);
+    }
   }
 
   function updateOpacity(value) {
@@ -927,6 +962,7 @@ export default function MedicalVolume3DViewer({
     if (scene.current?.overlay) {
       scene.current.overlay.setVisibility(false);
       scene.current.actor.setVisibility(true);
+      scene.current.thresholdOn = false;
     }
     restorePresetTransfer();
     onCommitThreshold?.(null);
@@ -957,34 +993,63 @@ export default function MedicalVolume3DViewer({
   }, [externalThreshold, dimensions, isolate]);
 
   useEffect(() => {
+    setClipEnabled(false);
+    setClipMode('plane');
+    setClipAxisIndex(0);
+    setClipPos(0);
+    setClipReverse(false);
+    setClipBox({ xMin: 0, xMax: 100, yMin: 0, yMax: 100, zMin: 0, zMax: 100 });
+  }, [slideId]);
+
+  useEffect(() => {
     const current = scene.current;
-    if (!current?.clipPlane || !current.dims) return;
-    const [sx, sy, sz] = current.spacing || [1, 1, 1];
-    const [dx, dy, dz] = current.dims;
-    const size = [sx * Math.max(dx - 1, 1), sy * Math.max(dy - 1, 1), sz * Math.max(dz - 1, 1)];
-    if (clipAxis === 'none') {
-      current.mapper.removeAllClippingPlanes();
-      current.overlayMapper.removeAllClippingPlanes();
-      current.surface.getMapper().removeAllClippingPlanes();
-      current.clipOn = false;
+    if (!current?.clipPlanes || !current.image) return;
+    const geometry = {
+      origin: current.image.getOrigin?.() || [0, 0, 0],
+      spacing: current.image.getSpacing?.() || current.spacing,
+      direction: current.image.getDirection?.() || [1, 0, 0, 0, 1, 0, 0, 0, 1],
+      dims: current.image.getDimensions?.() || current.dims,
+    };
+    const mappers = [current.mapper, current.overlayMapper, current.surface.getMapper()].filter(Boolean);
+    mappers.forEach((mapper) => mapper.removeAllClippingPlanes());
+    if (!clipEnabled) {
+      current.outline?.setVisibility(false);
+      current.view.getRenderWindow().render();
+      return;
+    }
+    const fractions = {
+      xMin: clipBox.xMin / 100,
+      xMax: clipBox.xMax / 100,
+      yMin: clipBox.yMin / 100,
+      yMax: clipBox.yMax / 100,
+      zMin: clipBox.zMin / 100,
+      zMax: clipBox.zMax / 100,
+    };
+    const definitions = clipMode === 'box'
+      ? boxDefinitions(geometry, fractions)
+      : [planeDefinition(geometry, { axis: clipAxisIndex, fraction: clipPos / 100, reverse: clipReverse })];
+    definitions.forEach((definition, index) => {
+      const plane = current.clipPlanes[index];
+      plane.setOrigin(definition.origin[0], definition.origin[1], definition.origin[2]);
+      plane.setNormal(definition.normal[0], definition.normal[1], definition.normal[2]);
+      mappers.forEach((mapper) => mapper.addClippingPlane(plane));
+    });
+    if (clipMode === 'box' && current.outlinePoly) {
+      const corners = boxCorners(geometry, fractions);
+      const flat = new Float32Array(24);
+      corners.forEach((corner, index) => {
+        flat[index * 3] = corner[0];
+        flat[index * 3 + 1] = corner[1];
+        flat[index * 3 + 2] = corner[2];
+      });
+      current.outlinePoly.getPoints().setData(flat, 3);
+      current.outlinePoly.modified();
+      current.outline.setVisibility(true);
     } else {
-      const normal = clipAxis === 'sagittal' ? [1, 0, 0] : clipAxis === 'coronal' ? [0, 1, 0] : [0, 0, 1];
-      const fraction = clipPos / 100;
-      current.clipPlane.setNormal(normal[0], normal[1], normal[2]);
-      current.clipPlane.setOrigin(
-        clipAxis === 'sagittal' ? size[0] * fraction : size[0] / 2,
-        clipAxis === 'coronal' ? size[1] * fraction : size[1] / 2,
-        clipAxis === 'axial' ? size[2] * fraction : size[2] / 2,
-      );
-      if (!current.clipOn) {
-        current.mapper.addClippingPlane(current.clipPlane);
-        current.overlayMapper.addClippingPlane(current.clipPlane);
-        current.surface.getMapper().addClippingPlane(current.clipPlane);
-        current.clipOn = true;
-      }
+      current.outline?.setVisibility(false);
     }
     current.view.getRenderWindow().render();
-  }, [clipAxis, clipPos, dimensions]);
+  }, [clipEnabled, clipMode, clipAxisIndex, clipPos, clipReverse, clipBox, dimensions]);
 
   function toggleOverlay(checked) {
     setHuVisible(checked);
@@ -1025,22 +1090,24 @@ export default function MedicalVolume3DViewer({
 
   function toggleSurface() {
     const next = !surfaceOn;
+    surfaceOnRef.current = next;
     setSurfaceOn(next);
-    if (!scene.current) return;
-    if (thresholdOn && huVisible && next) {
+    const current = scene.current;
+    if (!current) return;
+    if (!next) {
+      current.surface.setVisibility(false);
+      render();
+      return;
+    }
+    if (thresholdOn && huVisible) {
       const low = Number(huMin);
       const high = Number(huMax);
-      if (Number.isFinite(low) && Number.isFinite(high)) thresholdSurface(low, high);
-      scene.current.surface.setVisibility(true);
-    } else if (next) {
-      const tissue = scene.current.range?.foreground?.p75;
-      ensureSurface(hu && preset === 'Lung' ? -500 : hu ? 300 : (Number.isFinite(tissue) ? tissue : 0));
-      scene.current.surface.setVisibility(true);
+      if (Number.isFinite(low) && Number.isFinite(high)) paintThreshold(low, high, huColor, huOpacity);
     } else {
       const tissue = current.range?.foreground?.p75;
       ensureSurface(hu && preset === 'Lung' ? -500 : hu ? 300 : (Number.isFinite(tissue) ? tissue : 0));
+      current.surface.setVisibility(true);
     }
-    current.surface.setVisibility(true);
     render();
   }
 
@@ -1256,31 +1323,105 @@ export default function MedicalVolume3DViewer({
                   onCommitThreshold({ low, high, color: huColor, opacity: huOpacity, isolate: checked });
                 }
               }} /> Isolate range</label>
-              <label>Clip
-                <select value={clipAxis} onChange={(event) => setClipAxis(event.target.value)}>
-                  <option value="none">Off</option>
-                  <option value="axial">Axial</option>
-                  <option value="coronal">Coronal</option>
-                  <option value="sagittal">Sagittal</option>
-                </select>
-              </label>
-              {clipAxis !== 'none' && (
-                <label>Clip position {clipPos}%
-                  <input type="range" min="0" max="100" value={clipPos} onChange={(event) => setClipPos(Number(event.target.value))} />
-                </label>
-              )}
+              <label className="imaging-check"><input type="checkbox" checked={largestOnly} onChange={(event) => {
+                largestOnlyRef.current = event.target.checked;
+                setLargestOnly(event.target.checked);
+                const low = Number(huMin);
+                const high = Number(huMax);
+                if (thresholdOn && huVisible && Number.isFinite(low) && Number.isFinite(high)) {
+                  paintThreshold(low, high, huColor, huOpacity);
+                  render();
+                }
+              }} /> Largest piece only</label>
               <button type="submit" className="btn-control-secondary">Apply</button>
               <button type="button" className="btn-control-secondary" onClick={clearThreshold}>Clear</button>
             </div>
             {huError && <p className="imaging-note imaging-note--error">{huError}</p>}
             {thresholdOn && (
               <p className="imaging-note">
-                HU volume threshold {huMin}–{huMax} {unitLabel}: soft opacity ramp with shading (Asclepios-style).
-                Outside this interval stays transparent. Wide bands can still include air and look cloudy.
+                Colored voxels are inside {huMin}–{huMax} {unitLabel}, the same inclusive range as the 2D slice.
               </p>
             )}
           </form>
         </div>
+
+        <details className="imaging-panel__section" open>
+          <summary>Volume Clipping</summary>
+          <label className="imaging-check">
+            <input type="checkbox" checked={clipEnabled} onChange={(event) => setClipEnabled(event.target.checked)} />
+            Enable clipping
+          </label>
+          {clipEnabled && (
+            <>
+              <label>Mode
+                <select value={clipMode} onChange={(event) => setClipMode(event.target.value)}>
+                  <option value="plane">Plane</option>
+                  <option value="box">Box</option>
+                </select>
+              </label>
+              {clipMode === 'plane' ? (
+                <>
+                  <label>Axis
+                    <select value={clipAxisIndex} onChange={(event) => setClipAxisIndex(Number(event.target.value))}>
+                      <option value={0}>X</option>
+                      <option value={1}>Y</option>
+                      <option value={2}>Z</option>
+                    </select>
+                  </label>
+                  <label>Position {clipPos}%
+                    <input type="range" min="0" max="100" value={clipPos} onChange={(event) => setClipPos(Number(event.target.value))} />
+                  </label>
+                  <label className="imaging-check">
+                    <input type="checkbox" checked={clipReverse} onChange={(event) => setClipReverse(event.target.checked)} />
+                    Reverse direction
+                  </label>
+                </>
+              ) : (
+                ['x', 'y', 'z'].map((axis) => (
+                  <div key={axis}>
+                    <label>{axis.toUpperCase()} min {clipBox[`${axis}Min`]}%
+                      <input type="range" min="0" max="100" value={clipBox[`${axis}Min`]} onChange={(event) => setClipBox((current) => {
+                        const next = { ...current, [`${axis}Min`]: Number(event.target.value) };
+                        const clamped = clampBoxFractions({
+                          xMin: next.xMin / 100, xMax: next.xMax / 100,
+                          yMin: next.yMin / 100, yMax: next.yMax / 100,
+                          zMin: next.zMin / 100, zMax: next.zMax / 100,
+                        });
+                        return {
+                          xMin: Math.round(clamped.xMin * 100), xMax: Math.round(clamped.xMax * 100),
+                          yMin: Math.round(clamped.yMin * 100), yMax: Math.round(clamped.yMax * 100),
+                          zMin: Math.round(clamped.zMin * 100), zMax: Math.round(clamped.zMax * 100),
+                        };
+                      })} />
+                    </label>
+                    <label>{axis.toUpperCase()} max {clipBox[`${axis}Max`]}%
+                      <input type="range" min="0" max="100" value={clipBox[`${axis}Max`]} onChange={(event) => setClipBox((current) => {
+                        const next = { ...current, [`${axis}Max`]: Number(event.target.value) };
+                        const clamped = clampBoxFractions({
+                          xMin: next.xMin / 100, xMax: next.xMax / 100,
+                          yMin: next.yMin / 100, yMax: next.yMax / 100,
+                          zMin: next.zMin / 100, zMax: next.zMax / 100,
+                        });
+                        return {
+                          xMin: Math.round(clamped.xMin * 100), xMax: Math.round(clamped.xMax * 100),
+                          yMin: Math.round(clamped.yMin * 100), yMax: Math.round(clamped.yMax * 100),
+                          zMin: Math.round(clamped.zMin * 100), zMax: Math.round(clamped.zMax * 100),
+                        };
+                      })} />
+                    </label>
+                  </div>
+                ))
+              )}
+              <button type="button" className="btn-control-secondary" onClick={() => {
+                setClipPos(0);
+                setClipReverse(false);
+                setClipAxisIndex(0);
+                setClipBox({ xMin: 0, xMax: 100, yMin: 0, yMax: 100, zMin: 0, zMax: 100 });
+              }}>Reset clipping</button>
+            </>
+          )}
+          <p className="imaging-note">Clipping cuts the 3D view only. HU values and the 2D slices stay unchanged.</p>
+        </details>
 
         <div className="imaging-panel__section">
           <h3>Camera</h3>
@@ -1294,7 +1435,7 @@ export default function MedicalVolume3DViewer({
           </label>
           <p className="imaging-note">
             {thresholdOn
-              ? 'Surface uses the same HU interval as Apply, but draws a mid-HU contour for clearer anatomy. Volume and surface are independent modes.'
+              ? 'The surface is the boundary of the selected voxels. It is off until this box is checked. Largest piece only is also off until checked.'
               : (hu ? 'CT volumes use calibrated HU (same scale as 2D). Enable surface after Apply for a contour view.' : 'Presets use this volume’s own intensities.')}
           </p>
         </div>
