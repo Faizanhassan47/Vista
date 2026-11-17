@@ -420,9 +420,10 @@ export default function RadiologyViewer({ slide, onError }) {
           : '');
       })
       .catch((error) => {
-        if (error.name !== 'AbortError' && requestId === thresholdReq.current) {
-          setHuError(error.message);
-        }
+        if (error.name === 'AbortError' || requestId !== thresholdReq.current) return;
+        setHuMask((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+        setHuStats(null);
+        setHuError(error.message);
       });
     return () => controller.abort();
   }, [meta, viewMode, appliedThreshold, index, plane, slide.id]);
@@ -539,6 +540,9 @@ export default function RadiologyViewer({ slide, onError }) {
             hu={huSupported}
             showVolume={Boolean(meta?.volume_supported)}
             threshold={sharedThreshold}
+            studyLabel={meta?.patient_name || meta?.study_description || slide.name || ''}
+            modalityLabel={meta?.modality || slide.format || ''}
+            tool={tool}
           />
         ) : (
           <div
