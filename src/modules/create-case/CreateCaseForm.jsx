@@ -113,7 +113,7 @@ export default function CreateCaseForm({
                 name="image"
                 type="file"
                 multiple
-                accept=".svs,.tif,.tiff,.ndpi,.mrxs,.scn,.dcm,.nii,.nii.gz,image/jpeg,image/png"
+                accept=".svs,.tif,.tiff,.ndpi,.mrxs,.scn,.dcm,.nii,.nii.gz,.nrrd,.nhdr,image/jpeg,image/png"
                 onChange={(event) => { addFiles(event.target.files); event.target.value = ''; }}
                 disabled={busy}
               />

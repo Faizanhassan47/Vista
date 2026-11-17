@@ -335,11 +335,11 @@ export default function App() {
     const extension = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? '';
     const supportedImages = new Set(['.jpg', '.jpeg', '.png']);
     const supportedWsi = new Set(['.svs', '.tif', '.tiff']);
-    const supportedMedical = new Set(['.dcm', '.dicom', '.nii', '.gz']);
+    const supportedMedical = new Set(['.dcm', '.dicom', '.nii', '.gz', '.nrrd', '.nhdr']);
     const medicalName = file.name.toLowerCase();
-    const isMedical = supportedMedical.has(extension) || medicalName.endsWith('.nii.gz');
+    const isMedical = supportedMedical.has(extension) || medicalName.endsWith('.nii.gz') || extension === '';
     if (!supportedImages.has(extension) && !supportedWsi.has(extension) && !isMedical) {
-      toast.error('Upload a JPG, PNG, SVS, TIFF, DICOM, or NIfTI file.');
+      toast.error('Upload a JPG, PNG, SVS, TIFF, DICOM, NIfTI, or NRRD file.');
       return false;
     }
     const isWsi = supportedWsi.has(extension) || isMedical;
@@ -386,7 +386,7 @@ export default function App() {
         if (!reviewerResponse.ok) throw new Error(apiErrorMessage(reviewerData.detail, 'Case created, but doctor assignment failed'));
       }
       const uploadErrors = [];
-      const medical = files.filter((file) => /\.(dcm|dicom|nii|nii\.gz)$/i.test(file.name));
+      const medical = files.filter((file) => /\.(dcm|dicom|nii|nii\.gz|nrrd|nhdr)$/i.test(file.name) || !file.name.includes('.'));
       const pathology = files.filter((file) => !medical.includes(file));
       if (medical.length) {
         const imagingForm = new FormData();
@@ -446,7 +446,7 @@ export default function App() {
       return;
     }
     if (files.some((file) => !validateFile(file))) return;
-    const medical = files.filter((file) => /\.(dcm|dicom|nii|nii\.gz)$/i.test(file.name));
+    const medical = files.filter((file) => /\.(dcm|dicom|nii|nii\.gz|nrrd|nhdr)$/i.test(file.name) || !file.name.includes('.'));
     const pathology = files.filter((file) => !medical.includes(file));
     if (medical.length && pathology.length) {
       toast.error('Upload DICOM/NIfTI separately from JPG, PNG, SVS, or TIFF slides.');
@@ -680,7 +680,7 @@ export default function App() {
         required
         type="file"
         multiple
-        accept="image/jpeg,image/png,image/tiff,.svs,.tif,.tiff,.dcm,.dicom,.nii,.nii.gz"
+        accept="image/jpeg,image/png,image/tiff,.svs,.tif,.tiff,.dcm,.dicom,.nii,.nii.gz,.nrrd,.nhdr"
       />
     </Field>
     <button className="btn-primary" disabled={busy}><Upload size={16} /> {busy ? 'Uploading…' : 'Upload Slide'}</button>

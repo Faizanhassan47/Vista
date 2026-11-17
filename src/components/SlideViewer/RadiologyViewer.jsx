@@ -70,7 +70,25 @@ export default function RadiologyViewer({ slide, onError }) {
   const [huError, setHuError] = useState('');
   const [huTissueId, setHuTissueId] = useState('air');
   const [appliedThreshold, setAppliedThreshold] = useState(null);
+  const [isolateRange, setIsolateRange] = useState(false);
   const thresholdReq = useRef(0);
+  const sharedThreshold = huVisible && appliedThreshold
+    ? { low: appliedThreshold.low, high: appliedThreshold.high, color: appliedThreshold.color, opacity: huOpacity, isolate: isolateRange }
+    : null;
+
+  function commitSharedThreshold(next) {
+    if (!next) {
+      clearThreshold();
+      return;
+    }
+    setHuMin(String(next.low));
+    setHuMax(String(next.high));
+    setHuColor(next.color || huColor);
+    if (next.opacity != null) setHuOpacity(next.opacity);
+    if (next.isolate != null) setIsolateRange(Boolean(next.isolate));
+    setHuVisible(true);
+    setAppliedThreshold({ low: next.low, high: next.high, color: next.color || huColor });
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -78,6 +96,8 @@ export default function RadiologyViewer({ slide, onError }) {
       .then(async (response) => {
         const body = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(body.detail || 'Could not read imaging metadata');
+        setAppliedThreshold(null);
+        setIsolateRange(false);
         setMeta(body);
         const axialCount = body.plane_counts?.axial || body.instance_count || 1;
         if (body.plane_counts) {
@@ -503,17 +523,8 @@ export default function RadiologyViewer({ slide, onError }) {
           <MedicalVolume3DViewer
             slideId={slide.id}
             hu={huSupported}
-            showCrosshair
-            cursor={{
-              axial: plane === 'axial' ? index : mprCursor.axial,
-              coronal: plane === 'coronal' ? index : mprCursor.coronal,
-              sagittal: plane === 'sagittal' ? index : mprCursor.sagittal,
-            }}
-            planeCounts={meta?.plane_counts || {
-              axial: meta?.instance_count || 1,
-              coronal: 1,
-              sagittal: 1,
-            }}
+            externalThreshold={sharedThreshold}
+            onCommitThreshold={commitSharedThreshold}
           />
         ) : viewMode === 'mpr' ? (
           <RadiologyMprViewer
@@ -527,10 +538,7 @@ export default function RadiologyViewer({ slide, onError }) {
             onActivePlane={(next) => setPlane(next === '3d' ? '3d' : next)}
             hu={huSupported}
             showVolume={Boolean(meta?.volume_supported)}
-            tool={tool}
-            onWlDrag={scheduleWl}
-            meta={meta}
-            slide={slide}
+            threshold={sharedThreshold}
           />
         ) : (
           <div
@@ -801,6 +809,7 @@ export default function RadiologyViewer({ slide, onError }) {
                   {huStats && (
                     <p className="imaging-note">
                       {huStats.matching} matching pixels ({huStats.percentage}% of {huStats.eligible}). {huStats.unit || unitLabel} range, not a diagnosis.
+                      {Number(huStats.percentage) >= 80 ? ' This interval covers most of the slice. Narrow the minimum and maximum to highlight one tissue.' : ''}
                     </p>
                   )}
                 </form>

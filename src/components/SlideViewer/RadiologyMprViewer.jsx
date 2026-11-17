@@ -62,15 +62,15 @@ function MprPane({
   onActivate,
   onCursor,
   onWheelSlice,
-  onWlDrag,
-  studyLabel = '',
-  modalityLabel = '',
+  threshold = null,
+  huScale = 'native',
 }) {
   const paneRef = useRef(null);
   const frameRef = useRef(null);
   const wlDrag = useRef(null);
   const moved = useRef(false);
   const [url, setUrl] = useState('');
+  const [mask, setMask] = useState('');
   const [error, setError] = useState('');
   const markers = PLANE_MARKERS[plane];
   const count = counts?.[plane] || 1;
@@ -113,56 +113,34 @@ function MprPane({
     if (url) URL.revokeObjectURL(url);
   }, [url]);
 
-  // Non-passive wheel so slice scrolling is reliable over the pane.
   useEffect(() => {
-    const node = paneRef.current;
-    if (!node) return undefined;
-    const onWheel = (event) => {
-      event.preventDefault();
-      onActivate(plane);
-      onWheelSlice(plane, event.deltaY > 0 ? 1 : -1);
-    };
-    node.addEventListener('wheel', onWheel, { passive: false });
-    return () => node.removeEventListener('wheel', onWheel);
-  }, [plane, onActivate, onWheelSlice]);
-
-  function handlePointerDown(event) {
-    if (event.button != null && event.button !== 0) return;
-    onActivate(plane);
-    moved.current = false;
-    if (tool === 'wl' && onWlDrag) {
-      wlDrag.current = {
-        x: event.clientX,
-        y: event.clientY,
-        center: wlCenter ?? 40,
-        width: wlWidth ?? 400,
-      };
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      event.preventDefault();
-      return;
+    if (!threshold) {
+      setMask((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+      return undefined;
     }
-  }
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      index: String(Math.min(Math.max(index, 0), count - 1)),
+      plane,
+      min_hu: String(threshold.low),
+      max_hu: String(threshold.high),
+      color: threshold.color || 'red',
+      scale: huScale,
+    });
+    apiFetch(`${API_BASE_URL}/api/slides/${slideId}/radiology/hu-mask?${params}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return;
+        const blob = await response.blob();
+        const next = URL.createObjectURL(blob);
+        setMask((current) => { if (current) URL.revokeObjectURL(current); return next; });
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [slideId, plane, index, count, threshold, huScale]);
 
-  function handlePointerMove(event) {
-    if (!wlDrag.current || tool !== 'wl') return;
-    const dx = event.clientX - wlDrag.current.x;
-    const dy = event.clientY - wlDrag.current.y;
-    if (Math.abs(dx) + Math.abs(dy) > 2) moved.current = true;
-    const nextWidth = Math.max(1, wlDrag.current.width + dx * 2);
-    const nextCenter = wlDrag.current.center - dy * 1.5;
-    onWlDrag?.(nextCenter, nextWidth);
-  }
+  useEffect(() => () => { if (mask) URL.revokeObjectURL(mask); }, [mask]);
 
-  function handlePointerUp(event) {
-    const wasWl = Boolean(wlDrag.current);
-    wlDrag.current = null;
-    try {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    } catch {
-      /* already released */
-    }
-    if (wasWl && moved.current) return;
-    // Click (not a W/L drag): move linked crosshair.
+  function handleClick(event) {
     const node = frameRef.current;
     if (!node) return;
     const rect = node.getBoundingClientRect();
@@ -187,6 +165,7 @@ function MprPane({
       {url ? (
         <div className="radiology-mpr__frame" ref={frameRef}>
           <img src={url} alt="" draggable={false} />
+          {mask ? <img className="radiology-stage__overlay" src={mask} alt="" style={{ opacity: (threshold?.opacity ?? 55) / 100 }} /> : null}
           <span className="radiology-mpr__hair radiology-mpr__hair--v" style={{ left: `${hair.x * 100}%` }} />
           <span className="radiology-mpr__hair radiology-mpr__hair--h" style={{ top: `${hair.y * 100}%` }} />
         </div>
@@ -221,10 +200,7 @@ export default function RadiologyMprViewer({
   onActivePlane,
   hu = false,
   showVolume = true,
-  tool = 'stack',
-  onWlDrag,
-  meta = null,
-  slide = null,
+  threshold = null,
 }) {
   const counts = planeCounts || { axial: 1, coronal: 1, sagittal: 1 };
   const studyLabel = meta?.patient_name || meta?.study_description || slide?.name || '';
@@ -255,9 +231,8 @@ export default function RadiologyMprViewer({
           onActivate={onActivePlane}
           onCursor={onCursorChange}
           onWheelSlice={wheelSlice}
-          onWlDrag={onWlDrag}
-          studyLabel={studyLabel}
-          modalityLabel={modalityLabel}
+          threshold={threshold}
+          huScale={hu ? 'hu' : 'native'}
         />
       ))}
       {showVolume ? (
@@ -277,6 +252,7 @@ export default function RadiologyMprViewer({
             showCrosshair
             cursor={cursor}
             planeCounts={counts}
+            externalThreshold={threshold}
           />
         </div>
       ) : null}
