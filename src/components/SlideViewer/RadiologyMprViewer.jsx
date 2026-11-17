@@ -64,6 +64,8 @@ function MprPane({
   onWheelSlice,
   threshold = null,
   huScale = 'native',
+  studyLabel = '',
+  modalityLabel = '',
 }) {
   const paneRef = useRef(null);
   const frameRef = useRef(null);
@@ -129,12 +131,18 @@ function MprPane({
     });
     apiFetch(`${API_BASE_URL}/api/slides/${slideId}/radiology/hu-mask?${params}`, { signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) return;
+        if (!response.ok) {
+          setMask((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+          return;
+        }
         const blob = await response.blob();
         const next = URL.createObjectURL(blob);
         setMask((current) => { if (current) URL.revokeObjectURL(current); return next; });
       })
-      .catch(() => {});
+      .catch((error) => {
+        if (error.name === 'AbortError') return;
+        setMask((current) => { if (current) URL.revokeObjectURL(current); return ''; });
+      });
     return () => controller.abort();
   }, [slideId, plane, index, count, threshold, huScale]);
 
@@ -147,7 +155,28 @@ function MprPane({
     if (rect.width < 1 || rect.height < 1) return;
     const nx = (event.clientX - rect.left) / rect.width;
     const ny = (event.clientY - rect.top) / rect.height;
+    onActivate(plane);
     onCursor(cursorFromClick(plane, nx, ny, counts, cursor));
+  }
+
+  function handlePointerDown(event) {
+    onActivate(plane);
+    moved.current = false;
+    wlDrag.current = { x: event.clientX, y: event.clientY };
+  }
+
+  function handlePointerMove(event) {
+    if (!wlDrag.current) return;
+    const dx = event.clientX - wlDrag.current.x;
+    const dy = event.clientY - wlDrag.current.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) moved.current = true;
+  }
+
+  function handlePointerUp(event) {
+    const dragged = moved.current;
+    wlDrag.current = null;
+    moved.current = false;
+    if (!dragged) handleClick(event);
   }
 
   return (
@@ -158,6 +187,11 @@ function MprPane({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerUp}
+      onWheel={(event) => {
+        event.preventDefault();
+        onActivate(plane);
+        onWheelSlice(plane, event.deltaY > 0 ? 1 : -1);
+      }}
       role="presentation"
     >
       <div className="radiology-mpr__label">{plane.charAt(0).toUpperCase() + plane.slice(1)}</div>
@@ -201,10 +235,11 @@ export default function RadiologyMprViewer({
   hu = false,
   showVolume = true,
   threshold = null,
+  studyLabel = '',
+  modalityLabel = '',
+  tool = 'stack',
 }) {
   const counts = planeCounts || { axial: 1, coronal: 1, sagittal: 1 };
-  const studyLabel = meta?.patient_name || meta?.study_description || slide?.name || '';
-  const modalityLabel = meta?.modality || slide?.format || '';
 
   function wheelSlice(plane, delta) {
     const max = counts[plane] || 1;
@@ -233,6 +268,8 @@ export default function RadiologyMprViewer({
           onWheelSlice={wheelSlice}
           threshold={threshold}
           huScale={hu ? 'hu' : 'native'}
+          studyLabel={studyLabel}
+          modalityLabel={modalityLabel}
         />
       ))}
       {showVolume ? (
