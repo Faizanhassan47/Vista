@@ -303,7 +303,9 @@ export default function AiAnalysisPanel({
       .then((data) => {
         setEntitlements(data);
         const available = (data?.features || []).filter((feature) => (
-          feature.is_entitled && feature.is_active && feature.is_implemented && feature.user_enabled
+          feature.feature_code !== 'NEUROMRI_SLICE_CLASSIFICATION'
+          && feature.feature_code !== 'TOTALSEGMENTATOR'
+          && feature.is_entitled && feature.is_active && feature.is_implemented && feature.user_enabled
         ));
         setSelectedFeatureCode((current) => available.some((feature) => feature.feature_code === current)
           ? current : (available[0]?.feature_code || ''));
