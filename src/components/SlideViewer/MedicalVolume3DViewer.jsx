@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 import { findHuTissuePreset, HU_TISSUE_PRESETS } from './huTissuePresets';
@@ -384,6 +385,8 @@ export default function MedicalVolume3DViewer({
   showCrosshair = false,
   externalThreshold = null,
   onCommitThreshold = null,
+  dockControls = null,
+  segmentation = null,
 }) {
   const host = useRef(null);
   const scene = useRef(null);
@@ -448,6 +451,15 @@ export default function MedicalVolume3DViewer({
     overlay.getProperty().setScalarOpacity(0, overlayOpacity);
     overlay.setVisibility(false);
     renderer.addVolume(overlay);
+    const organColor = vtkColorTransferFunction.newInstance();
+    const organOpacity = vtkPiecewiseFunction.newInstance();
+    const organs = vtkVolume.newInstance();
+    const organMapper = vtkVolumeMapper.newInstance();
+    organs.setMapper(organMapper);
+    organs.getProperty().setRGBTransferFunction(0, organColor);
+    organs.getProperty().setScalarOpacity(0, organOpacity);
+    organs.setVisibility(false);
+    renderer.addVolume(organs);
     const cubes = vtkImageMarchingCubes.newInstance({ contourValue: hu ? 300 : 80, computeNormals: true });
     const surfaceMapper = vtkMapper.newInstance();
     surfaceMapper.setInputConnection(cubes.getOutputPort());
@@ -530,7 +542,7 @@ export default function MedicalVolume3DViewer({
     renderer.addActor(outline);
     scene.current = {
       view, actor, mapper, color, opacityFn, renderer, cubes, surface, orientation,
-      overlay, overlayMapper, overlayColor, overlayOpacity, clipPlanes, outline, outlinePoly,
+      overlay, overlayMapper, overlayColor, overlayOpacity, organs, organMapper, organColor, organOpacity, clipPlanes, outline, outlinePoly,
       crossX, crossY, crossZ, probe, probeSource,
       quality: initialQuality, surfaceReady: false, spacing: [1, 1, 1], dims: [1, 1, 1], shaded: true,
       blendMode: 'composite',
@@ -687,6 +699,75 @@ export default function MedicalVolume3DViewer({
       controller.abort();
     };
   }, [slideId, hu, quality]);
+
+  useEffect(() => {
+    const current = scene.current;
+    if (!current?.organs || !current.image) return undefined;
+    if (!segmentation?.visible || !segmentation.jobId) {
+      current.organs.setVisibility(false);
+      current.view.getRenderWindow().render();
+      return undefined;
+    }
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      quality,
+      rois: (segmentation.rois || []).join(','),
+    });
+    apiFetch(`${API_BASE_URL}/api/ai/totalsegmentator/jobs/${segmentation.jobId}/volume?${params}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok || !scene.current?.image) return null;
+        const dims = [
+          Number(response.headers.get('X-Dim-I')),
+          Number(response.headers.get('X-Dim-J')),
+          Number(response.headers.get('X-Dim-K')),
+        ];
+        const expected = scene.current.dims;
+        if (!expected || dims.some((size, index) => size !== expected[index])) return null;
+        const values = new Uint8Array(await response.arrayBuffer());
+        const colors = String(response.headers.get('X-Colors') || '').split('|').filter(Boolean).map((item) => item.split(',').map(Number));
+        return { values, colors, dims };
+      })
+      .then((payload) => {
+        const view = scene.current;
+        if (!payload || !view?.organs) return;
+        const image = vtkImageData.newInstance();
+        image.setDimensions(...payload.dims);
+        image.setSpacing(...view.spacing);
+        image.setOrigin(...(view.image.getOrigin?.() || [0, 0, 0]));
+        image.getPointData().setScalars(vtkDataArray.newInstance({
+          name: 'Organs',
+          values: payload.values,
+          numberOfComponents: 1,
+        }));
+        view.organMapper.setInputData(image);
+        if (view.organMapper.setBlendModeToComposite) view.organMapper.setBlendModeToComposite();
+        const step = Math.min(...view.spacing);
+        view.organMapper.setSampleDistance(step);
+        const peak = Math.min(0.85, Math.max(0.05, (segmentation.opacity ?? 55) / 100));
+        view.organColor.removeAllPoints();
+        view.organOpacity.removeAllPoints();
+        view.organColor.addRGBPoint(0, 0, 0, 0);
+        view.organOpacity.addPoint(0, 0);
+        payload.colors.forEach((rgb, index) => {
+          const label = index + 1;
+          view.organColor.addRGBPoint(label, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
+          view.organOpacity.addPoint(label - 0.35, 0);
+          view.organOpacity.addPoint(label, peak);
+        });
+        const property = view.organs.getProperty();
+        property.setInterpolationTypeToNearest();
+        property.setShade(false);
+        property.setAmbient(1);
+        property.setDiffuse(0);
+        property.setSpecular(0);
+        if (property.setUseGradientOpacity) property.setUseGradientOpacity(0, false);
+        property.setScalarOpacityUnitDistance(0, Math.max(step * 8, 4));
+        view.organs.setVisibility(true);
+        view.view.getRenderWindow().render();
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [segmentation?.jobId, segmentation?.visible, (segmentation?.rois || []).join(','), segmentation?.opacity, quality, dimensions]);
 
   useEffect(() => {
     const current = scene.current;
@@ -1142,19 +1223,8 @@ export default function MedicalVolume3DViewer({
     );
   }
 
-  return (
-    <div className="radiology-3d-layout">
-      <div className="viewer radiology-stage medical-canvas radiology-3d">
-        <div ref={host} className="radiology-3d__canvas" />
-        {showCrosshair && cursor ? (
-          <div className="radiology-overlay radiology-overlay--tl">
-            <span>
-              Cursor A{cursor.axial + 1}/C{cursor.coronal + 1}/S{cursor.sagittal + 1}
-            </span>
-          </div>
-        ) : null}
-      </div>
-      <aside className="imaging-panel" aria-label="3D imaging controls">
+  const controls = (
+      <aside className={`imaging-panel${dockControls ? ' imaging-panel--docked' : ''}`} aria-label="3D imaging controls">
         <div className="imaging-panel__section">
           <h3>Display</h3>
           <p className="imaging-dims">{dimensions || 'Loading…'}</p>
@@ -1440,6 +1510,21 @@ export default function MedicalVolume3DViewer({
           </p>
         </div>
       </aside>
+  );
+
+  return (
+    <div className="radiology-3d-layout">
+      <div className="viewer radiology-stage medical-canvas radiology-3d">
+        <div ref={host} className="radiology-3d__canvas" />
+        {showCrosshair && cursor ? (
+          <div className="radiology-overlay radiology-overlay--tl">
+            <span>
+              Cursor A{cursor.axial + 1}/C{cursor.coronal + 1}/S{cursor.sagittal + 1}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      {dockControls ? createPortal(controls, dockControls) : controls}
     </div>
   );
 }

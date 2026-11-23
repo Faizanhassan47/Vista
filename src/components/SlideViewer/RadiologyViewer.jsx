@@ -1,6 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
-import { Box, Columns2, Hand, Maximize2, RotateCcw, Scan, SunMedium, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Activity, AlertTriangle, Box, ChevronDown, Columns2, Hand, Loader2, Maximize2, RotateCcw, Scan, SunMedium, ZoomIn, ZoomOut } from 'lucide-react';
+import '../WsiViewer/AiAnalysisPanel.css';
 import MedicalVolume3DViewer from './MedicalVolume3DViewer';
+import { TotalSegmentatorPanel } from './TotalSegmentatorPanel';
 import RadiologyMprViewer from './RadiologyMprViewer';
 import { findHuTissuePreset, HU_TISSUE_PRESETS } from './huTissuePresets';
 import { apiFetch } from '../../api';
@@ -30,6 +32,160 @@ function midCursor(counts) {
   };
 }
 
+function NeuroMriPanel({ slide, meta, viewMode, plane, index, mprCursor, result, busy, error, onRun, onVerified, onSegOverlay, onSegState }) {
+  const [open, setOpen] = useState(true);
+  const [feature, setFeature] = useState('neuromri');
+  const [verifyError, setVerifyError] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const storedModality = String(meta?.calibration?.modality || '').toUpperCase();
+  const dicomModality = slide?.file_type === 'dicom-stack' ? String(meta?.modality || '').toUpperCase() : '';
+  const modality = storedModality || dicomModality;
+  const isMr = modality === 'MR' || modality === 'MRI';
+  const isCt = modality === 'CT';
+  const needsMriVerification = slide?.file_type === 'nifti' && !isMr && !isCt;
+  const isNifti = slide?.file_type === 'nifti';
+  const activePlane = viewMode === '3d'
+    ? 'axial'
+    : (viewMode === 'mpr' ? (plane === '3d' ? 'axial' : plane) : (isNifti ? plane : 'axial'));
+  const activeIndex = (viewMode === 'mpr' || viewMode === '3d') ? (mprCursor?.[activePlane] ?? index) : index;
+  useEffect(() => { setFeature(isCt ? 'totalseg' : 'neuromri'); }, [slide?.id, isCt]);
+  if (!meta) return null;
+  const showModel = isMr;
+  const scores = result?.class_scores ? Object.entries(result.class_scores).sort((a, b) => b[1] - a[1]) : [];
+  return (
+    <section className="ai-panel" aria-label="AI analysis">
+      <div
+        className="ai-panel-header"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && setOpen((value) => !value)}
+      >
+        <div className="ai-panel-header-left">
+          <Activity size={15} aria-hidden="true" />
+          <div>
+            <p className="ai-panel-title">AI Analysis</p>
+            {result && !result.stale && (
+              <p className="ai-panel-subtitle">{result.predicted_class} · NeuroMRI EfficientNet-B0</p>
+            )}
+          </div>
+        </div>
+        <ChevronDown size={14} className={`ai-panel-chevron${open ? ' ai-panel-chevron--open' : ''}`} aria-hidden="true" />
+      </div>
+      {open && (
+        <>
+          <p className="ai-disclaimer" role="note">
+            <AlertTriangle size={11} aria-hidden="true" /> Research Use Only — Not for Clinical Diagnosis
+          </p>
+          <div className="ai-feature-selector">
+            <p className="ai-feature-selector__label">AI features on this study</p>
+            <div className="ai-feature-list">
+              <div className={`ai-feature-list__item${feature === 'neuromri' ? ' is-selected' : ''}`}>
+                <div>
+                  <strong>NeuroMRI EfficientNet-B0</strong>
+                  <span>{result && !result.stale ? 'Showing this slice' : 'Not run on this slice'}</span>
+                  <p className="ai-feature-selector__description">Classifies one selected 2D brain MRI slice into 10 dataset categories.</p>
+                </div>
+                <div className="ai-feature-list__actions">
+                  <button type="button" aria-pressed={feature === 'neuromri'} onClick={() => setFeature('neuromri')}>{feature === 'neuromri' ? 'Selected' : 'Use'}</button>
+                </div>
+              </div>
+              <div className={`ai-feature-list__item${feature === 'totalseg' ? ' is-selected' : ''}`}>
+                <div>
+                  <strong>TotalSegmentator</strong>
+                  <span>Anatomical segmentation</span>
+                  <p className="ai-feature-selector__description">Segments supported CT and MRI anatomical structures on a verified volume.</p>
+                </div>
+                <div className="ai-feature-list__actions">
+                  <button type="button" aria-pressed={feature === 'totalseg'} onClick={() => setFeature('totalseg')}>{feature === 'totalseg' ? 'Selected' : 'Use'}</button>
+                </div>
+              </div>
+            </div>
+            <p className="ai-feature-selector__description">Choose one model. Scores and masks are research outputs, not a diagnosis.</p>
+          </div>
+          {feature === 'totalseg' ? (
+            <TotalSegmentatorPanel
+              embedded
+              slide={slide}
+              meta={meta}
+              viewMode={viewMode}
+              plane={activePlane}
+              index={activeIndex}
+              onOverlay={onSegOverlay}
+              onState={onSegState}
+            />
+          ) : !showModel ? (
+            needsMriVerification ? (
+              <div className="ai-feature-selector">
+                <p className="ai-feature-selector__description">This NIfTI volume has no verified MRI modality. NIfTI is a file format, not a modality, so classification stays off until an authorized user confirms the source is MRI. Intensities and the filename are not used as proof.</p>
+                <div className="ai-actions">
+                  <button type="button" className="ai-action-btn" disabled={verifying} onClick={async () => {
+                    setVerifying(true);
+                    setVerifyError('');
+                    try {
+                      const response = await apiFetch(`${API_BASE_URL}/api/ai/neuromri/verify-modality`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ slide_id: slide.id }),
+                      });
+                      const body = await response.json().catch(() => ({}));
+                      if (!response.ok) throw new Error(body.detail || 'MRI verification was not saved');
+                      onVerified?.(body);
+                    } catch (err) {
+                      setVerifyError(err.message || 'MRI verification was not saved');
+                    } finally {
+                      setVerifying(false);
+                    }
+                  }}>{verifying ? 'Saving MRI verification…' : 'Verify this study as MRI'}</button>
+                </div>
+                {verifyError && <p className="imaging-note imaging-note--error">{verifyError}</p>}
+              </div>
+            ) : (
+              <p className="ai-feature-selector__description">NeuroMRI classifies brain MRI slices only. This study is {isCt ? 'CT' : (modality || 'not marked as MR')}, so the model stays off. CT viewing and HU tools are unchanged.</p>
+            )
+          ) : (
+            <>
+              {busy && (
+                <div className="ai-progress-card" role="status">
+                  <div className="ai-progress-header">
+                    <div className="ai-progress-title-row">
+                      <Loader2 size={13} className="spin ai-progress-spinner" aria-hidden="true" />
+                      <span className="ai-progress-stage">Running NeuroMRI on the selected slice…</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!busy && (
+                <div className="ai-actions">
+                  <button
+                    type="button"
+                    className="ai-action-btn"
+                    onClick={() => onRun({ slide_id: slide.id, plane: activePlane, index: activeIndex, frame_index: 0 })}
+                  >
+                    Classify selected slice
+                  </button>
+                </div>
+              )}
+              {error && <p className="imaging-note imaging-note--error">{error}</p>}
+              {result && (
+                <div className="ai-feature-selector">
+                  {result.stale && <p className="ai-feature-selector__description">This result is for a previous slice. Classify the current slice again.</p>}
+                  <p className="ai-panel-subtitle">Predicted class: {result.predicted_class}</p>
+                  <p className="ai-panel-subtitle">{result.model_version} · {result.source?.modality || 'MR'} · {result.source?.plane || 'frame'} {result.source?.slice_index ?? result.source?.frame_index}</p>
+                  {scores.map(([name, score]) => (
+                    <p key={name} className="ai-panel-subtitle">{name}: {Number(score).toFixed(4)}</p>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function RadiologyViewer({ slide, onError }) {
   const shellRef = useRef(null);
   const stageRef = useRef(null);
@@ -46,6 +202,7 @@ export default function RadiologyViewer({ slide, onError }) {
   const [frameError, setFrameError] = useState('');
   const [viewMode, setViewMode] = useState('2d');
   const [panelOpen, setPanelOpen] = useState(true);
+  const [volumeControlsHost, setVolumeControlsHost] = useState(null);
   const [tool, setTool] = useState('zoom');
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -71,10 +228,18 @@ export default function RadiologyViewer({ slide, onError }) {
   const [huTissueId, setHuTissueId] = useState('air');
   const [appliedThreshold, setAppliedThreshold] = useState(null);
   const [isolateRange, setIsolateRange] = useState(false);
+  const [neuro, setNeuro] = useState(null);
+  const [neuroBusy, setNeuroBusy] = useState(false);
+  const [neuroError, setNeuroError] = useState('');
+  const [segOverlay, setSegOverlay] = useState(null);
+  const [segJob, setSegJob] = useState(null);
+  const neuroReq = useRef(0);
   const thresholdReq = useRef(0);
-  const sharedThreshold = huVisible && appliedThreshold
-    ? { low: appliedThreshold.low, high: appliedThreshold.high, color: appliedThreshold.color, opacity: huOpacity, isolate: isolateRange }
-    : null;
+  const sharedThreshold = useMemo(() => (
+    huVisible && appliedThreshold
+      ? { low: appliedThreshold.low, high: appliedThreshold.high, color: appliedThreshold.color, opacity: huOpacity, isolate: isolateRange }
+      : null
+  ), [huVisible, appliedThreshold, huOpacity, isolateRange]);
 
   function commitSharedThreshold(next) {
     if (!next) {
@@ -91,6 +256,19 @@ export default function RadiologyViewer({ slide, onError }) {
   }
 
   useEffect(() => {
+    setNeuro((current) => {
+      if (!current?.selection || current.stale) return current;
+      const nifti = slide.file_type === 'nifti';
+      const activePlane = viewMode === 'mpr' ? plane : (nifti ? plane : 'axial');
+      const activeIndex = viewMode === 'mpr' ? (mprCursor?.[activePlane] ?? index) : index;
+      const same = current.selection.slide_id === slide.id
+        && current.selection.plane === activePlane
+        && current.selection.index === activeIndex;
+      return same ? current : { ...current, stale: true };
+    });
+  }, [slide.id, slide.file_type, viewMode, plane, index, mprCursor]);
+
+  useEffect(() => {
     const controller = new AbortController();
     apiFetch(`${API_BASE_URL}/api/slides/${slide.id}/radiology`, { signal: controller.signal })
       .then(async (response) => {
@@ -98,6 +276,8 @@ export default function RadiologyViewer({ slide, onError }) {
         if (!response.ok) throw new Error(body.detail || 'Could not read imaging metadata');
         setAppliedThreshold(null);
         setIsolateRange(false);
+        setNeuro(null);
+        setNeuroError('');
         setMeta(body);
         const axialCount = body.plane_counts?.axial || body.instance_count || 1;
         if (body.plane_counts) {
@@ -519,13 +699,15 @@ export default function RadiologyViewer({ slide, onError }) {
         </div>
       </div>
 
-      <div className={`radiology-workstation__body${panelOpen && viewMode !== '3d' ? '' : ' is-panel-closed'}${viewMode === '3d' ? ' is-rail-hidden' : ''}`}>
+      <div className={`radiology-workstation__body${panelOpen ? '' : ' is-panel-closed'}${viewMode === '3d' ? ' is-rail-hidden' : ''}`}>
         {viewMode === '3d' ? (
           <MedicalVolume3DViewer
             slideId={slide.id}
             hu={huSupported}
             externalThreshold={sharedThreshold}
             onCommitThreshold={commitSharedThreshold}
+            dockControls={panelOpen ? volumeControlsHost : null}
+            segmentation={segJob?.job?.status === 'completed' && segJob.visible ? { jobId: segJob.job.job_id, rois: segJob.rois, opacity: segJob.opacity, visible: true } : null}
           />
         ) : viewMode === 'mpr' ? (
           <RadiologyMprViewer
@@ -543,6 +725,7 @@ export default function RadiologyViewer({ slide, onError }) {
             studyLabel={meta?.patient_name || meta?.study_description || slide.name || ''}
             modalityLabel={meta?.modality || slide.format || ''}
             tool={tool}
+            segmentation={segJob?.job?.status === 'completed' && segJob.visible ? { jobId: segJob.job.job_id, rois: segJob.rois, opacity: segJob.opacity, visible: true } : null}
           />
         ) : (
           <div
@@ -573,6 +756,7 @@ export default function RadiologyViewer({ slide, onError }) {
                   }}
                 />
                 {huVisible && huMask && <img className="radiology-stage__overlay" src={huMask} alt="" style={{ opacity: huOpacity / 100 }} />}
+                {segOverlay && <img className="neuromri-cam" src={segOverlay.src} alt="" style={{ opacity: (segOverlay.opacity ?? 55) / 100 }} />}
               </div>
             )}
             <div className="radiology-overlay radiology-overlay--tl">
@@ -617,8 +801,46 @@ export default function RadiologyViewer({ slide, onError }) {
           </aside>
         )}
 
-        {panelOpen && viewMode !== '3d' && (
-          <aside className="imaging-panel" aria-label="Imaging controls">
+        {panelOpen && (
+          <aside className="imaging-panel annotation-panel" aria-label="Imaging controls">
+            <NeuroMriPanel
+              slide={slide}
+              meta={meta}
+              viewMode={viewMode}
+              plane={plane}
+              index={index}
+              mprCursor={mprCursor}
+              result={neuro}
+              busy={neuroBusy}
+              error={neuroError}
+              onVerified={(body) => setMeta((current) => ({ ...current, modality: body.modality, calibration: body.calibration }))}
+              onSegOverlay={setSegOverlay}
+              onSegState={setSegJob}
+              onRun={async (selection) => {
+                const requestId = neuroReq.current + 1;
+                neuroReq.current = requestId;
+                setNeuroBusy(true);
+                setNeuroError('');
+                try {
+                  const response = await apiFetch(`${API_BASE_URL}/api/ai/neuromri/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(selection),
+                  });
+                  const body = await response.json().catch(() => ({}));
+                  if (neuroReq.current !== requestId) return;
+                  if (!response.ok) throw new Error(body.detail || 'NeuroMRI could not classify this slice');
+                  setNeuro({ ...body, stale: false, selection });
+                } catch (err) {
+                  if (neuroReq.current !== requestId) return;
+                  setNeuroError(err.message || 'NeuroMRI could not classify this slice');
+                } finally {
+                  if (neuroReq.current === requestId) setNeuroBusy(false);
+                }
+              }}
+            />
+            {viewMode === '3d' && <div ref={setVolumeControlsHost} className="radiology-3d-controls-dock" />}
+            {viewMode !== '3d' && (<>
             <div className="imaging-panel__section">
               <h3>Display</h3>
               <p className="imaging-dims">{dimensionsLabel}</p>
@@ -669,12 +891,13 @@ export default function RadiologyViewer({ slide, onError }) {
               <p className="imaging-note">
                 {viewMode === 'mpr'
                   ? 'MPR: wheel over a plane to scroll slices. Select W/L then drag on a plane to change window/level. Side-panel presets also apply.'
-                  : '2D: select W/L then drag on the image (↔ width, ↕ level). Wheel scrolls slices (Ctrl+wheel zooms).'}
+                  : viewMode === '3d'
+                    ? 'Window and level apply to the 2D and MPR slices. Volume opacity and rendering preset stay on the 3D display controls.'
+                    : '2D: select W/L then drag on the image (↔ width, ↕ level). Wheel scrolls slices (Ctrl+wheel zooms).'}
               </p>
             </div>
 
-            {viewMode === '2d' && (
-              <div className="imaging-panel__section">
+            <div className="imaging-panel__section">
                 <h3>Threshold</h3>
                 <form className="imaging-stack" onSubmit={applyHu}>
                   <label className="imaging-check">
@@ -817,8 +1040,8 @@ export default function RadiologyViewer({ slide, onError }) {
                     </p>
                   )}
                 </form>
-              </div>
-            )}
+            </div>
+            </>)}
 
             {(viewMode === 'mpr' || viewMode === '3d') && (
               <div className="imaging-panel__section">

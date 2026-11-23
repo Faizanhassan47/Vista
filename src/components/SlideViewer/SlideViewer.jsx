@@ -1,8 +1,85 @@
-import { useEffect, useRef } from 'react';
-import { Maximize2, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Activity, AlertTriangle, ChevronDown, Loader2, Maximize2, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import WsiViewer from '../WsiViewer/WsiViewer';
 import RadiologyViewer from './RadiologyViewer';
+import Tabs from '../Tabs/Tabs';
+import { apiFetch } from '../../api';
+import { API_BASE_URL } from '../../config';
+import '../WsiViewer/AiAnalysisPanel.css';
 import './SlideViewer.css';
+
+function PictureAiPanel({ slide }) {
+  const [open, setOpen] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+  const scores = result?.class_scores ? Object.entries(result.class_scores).sort((a, b) => b[1] - a[1]) : [];
+  return (
+    <aside className="imaging-panel" aria-label="AI analysis">
+      <Tabs className="findings-tabs" ariaLabel="Viewer findings" value="ai" onChange={() => {}} items={[{ value: 'ai', label: 'AI insights' }]} />
+      <section className="ai-panel" aria-label="AI analysis">
+        <div className="ai-panel-header" role="button" tabIndex={0} aria-expanded={open} onClick={() => setOpen((value) => !value)}>
+          <div className="ai-panel-header-left">
+            <Activity size={15} aria-hidden="true" />
+            <div>
+              <p className="ai-panel-title">AI Analysis</p>
+              {result && <p className="ai-panel-subtitle">{result.predicted_class} · NeuroMRI EfficientNet-B0</p>}
+            </div>
+          </div>
+          <ChevronDown size={14} className={`ai-panel-chevron${open ? ' ai-panel-chevron--open' : ''}`} aria-hidden="true" />
+        </div>
+        {open && (
+          <>
+            <p className="ai-disclaimer" role="note"><AlertTriangle size={11} aria-hidden="true" /> Research Use Only — Not for Clinical Diagnosis</p>
+            <div className="ai-feature-selector">
+              <p className="ai-feature-selector__label">AI features on this image</p>
+              <div className="ai-feature-list">
+                <div className="ai-feature-list__item is-selected">
+                  <div>
+                    <strong>NeuroMRI EfficientNet-B0</strong>
+                    <span>{result ? 'Showing this image' : 'Not run on this image'}</span>
+                    <p className="ai-feature-selector__description">Classifies this JPG or PNG brain MRI picture. Scores are uncalibrated model outputs, not a diagnosis.</p>
+                  </div>
+                  <div className="ai-feature-list__actions"><button type="button" disabled aria-pressed="true">Selected</button></div>
+                </div>
+              </div>
+            </div>
+            {busy && <div className="ai-progress-card" role="status"><Loader2 size={13} className="spin" aria-hidden="true" /> Classifying this image…</div>}
+            {!busy && (
+              <div className="ai-actions">
+                <button type="button" className="ai-action-btn" onClick={async () => {
+                  setBusy(true);
+                  setError('');
+                  try {
+                    const response = await apiFetch(`${API_BASE_URL}/api/ai/neuromri/predict`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ slide_id: slide.id, plane: 'axial', index: 0, frame_index: 0 }),
+                    });
+                    const body = await response.json().catch(() => ({}));
+                    if (!response.ok) throw new Error(body.detail || 'NeuroMRI could not classify this image');
+                    setResult(body);
+                  } catch (err) {
+                    setError(err.message || 'NeuroMRI could not classify this image');
+                  } finally {
+                    setBusy(false);
+                  }
+                }}>Classify this image</button>
+              </div>
+            )}
+            {error && <p className="imaging-note imaging-note--error">{error}</p>}
+            {result && (
+              <div className="ai-feature-selector">
+                <p className="ai-panel-subtitle">Predicted class: {result.predicted_class}</p>
+                {scores.map(([name, score]) => <p key={name} className="ai-panel-subtitle">{name}: {Number(score).toFixed(4)}</p>)}
+              </div>
+            )}
+          </>
+        )}
+      </section>
+    </aside>
+  );
+}
 
 export default function SlideViewer({ slide, zoom, setZoom, position, setPosition, dragStart, setDragStart,
   isDragging, setIsDragging, viewerRef, reset, onError, syncViews, syncedViewerRef, onOpenRegistration, onOpenCompare, activePanel }) {
@@ -70,17 +147,42 @@ export default function SlideViewer({ slide, zoom, setZoom, position, setPositio
   const move = (event) => isDragging && setPosition({ x: event.clientX - dragStart.x, y: event.clientY - dragStart.y });
   const up = () => setIsDragging(false);
 
-  return <div className="viewer-canvas-container">
-    <div className="viewer-hint-bar"><span><Move size={13} /> Wheel to zoom · Drag to pan</span>
-      <div className="controls"><button type="button" aria-label="Zoom out" onClick={() => setZoom((value) => Math.max(.2, value / 1.4))}><ZoomOut size={16} /></button>
-        <span className="zoom-display" aria-live="polite">{Math.round(zoom * 100)}%</span>
-        <button type="button" aria-label="Zoom in" onClick={() => setZoom((value) => Math.min(10, value * 1.4))}><ZoomIn size={16} /></button>
-        <button type="button" className="btn-control-secondary" onClick={reset}><RotateCcw size={15} /> Reset</button>
-        <button type="button" className="btn-control-secondary" onClick={() => { setZoom(.5); setPosition({ x: 0, y: 0 }); }}><Maximize2 size={15} /> Fit</button></div></div>
-    <div ref={viewerRef} className={`viewer ${isDragging ? 'grabbing' : 'grabbable'}`}
-      onWheel={(event) => { event.preventDefault(); setZoom((value) => event.deltaY < 0 ? Math.min(10, value * 1.15) : Math.max(.2, value / 1.15)); }}
-      onMouseDown={down} onMouseMove={move} onMouseUp={up} onMouseLeave={up}>
-      <div ref={transformRef} className="viewer-transform-layer"><img ref={imageRef} src={slide.image_url} alt={`Slide ${slide.label}`} draggable={false} /></div>
+  return (
+    <div className="radiology-workstation">
+      <div className="radiology-workstation__body">
+        <div
+          ref={viewerRef}
+          className={`viewer radiology-stage${isDragging ? ' is-pan' : ''}`}
+          onWheel={(event) => { event.preventDefault(); setZoom((value) => event.deltaY < 0 ? Math.min(10, value * 1.15) : Math.max(.2, value / 1.15)); }}
+          onMouseDown={down}
+          onMouseMove={move}
+          onMouseUp={up}
+          onMouseLeave={up}
+        >
+          <div ref={transformRef} className="radiology-stage__frame">
+            <span ref={imageRef} className="neuromri-cam-host" style={{ width: `${Math.round(zoom * 100)}%` }}>
+              <img src={slide.image_url} alt={`Slide ${slide.label}`} draggable={false} />
+            </span>
+          </div>
+          <div className="radiology-overlay radiology-overlay--tl">
+            <span>{slide.label || slide.name || 'Image'}</span>
+            <span>{slide.format || 'JPG'}</span>
+            <span>Single image</span>
+          </div>
+          <div className="radiology-overlay radiology-overlay--tr">
+            <span>Zoom {Math.round(zoom * 100)}%</span>
+          </div>
+        </div>
+        <aside className="radiology-tool-rail" aria-label="Viewer tools">
+          <button type="button" className="btn-control-secondary" title="Zoom out" onClick={() => setZoom((value) => Math.max(0.2, value / 1.4))}><ZoomOut size={15} /></button>
+          <button type="button" className="btn-control-secondary" title="Zoom in" onClick={() => setZoom((value) => Math.min(10, value * 1.4))}><ZoomIn size={15} /></button>
+          <button type="button" className="btn-control-secondary" title="Pan" onClick={() => {}}><Move size={15} /></button>
+          <div className="radiology-tool-rail__spacer" />
+          <button type="button" className="btn-control-secondary" title="Reset" onClick={reset}><RotateCcw size={15} /></button>
+          <button type="button" className="btn-control-secondary" title="Fit" onClick={() => { setZoom(0.5); setPosition({ x: 0, y: 0 }); }}><Maximize2 size={15} /></button>
+        </aside>
+        <PictureAiPanel slide={slide} />
+      </div>
     </div>
-  </div>;
+  );
 }
