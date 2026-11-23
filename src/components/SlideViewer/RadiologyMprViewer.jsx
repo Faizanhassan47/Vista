@@ -66,6 +66,7 @@ function MprPane({
   huScale = 'native',
   studyLabel = '',
   modalityLabel = '',
+  segmentation = null,
 }) {
   const paneRef = useRef(null);
   const frameRef = useRef(null);
@@ -73,6 +74,7 @@ function MprPane({
   const moved = useRef(false);
   const [url, setUrl] = useState('');
   const [mask, setMask] = useState('');
+  const [segUrl, setSegUrl] = useState('');
   const [error, setError] = useState('');
   const markers = PLANE_MARKERS[plane];
   const count = counts?.[plane] || 1;
@@ -110,6 +112,29 @@ function MprPane({
       });
     return () => controller.abort();
   }, [slideId, plane, index, count, wlCenter, wlWidth]);
+
+  useEffect(() => {
+    if (!segmentation?.jobId || !segmentation.visible) {
+      setSegUrl('');
+      return undefined;
+    }
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      plane,
+      index: String(Math.min(Math.max(index, 0), count - 1)),
+      rois: (segmentation.rois || []).join(','),
+    });
+    apiFetch(`${API_BASE_URL}/api/ai/totalsegmentator/jobs/${segmentation.jobId}/overlay?${params}`, { signal: controller.signal })
+      .then((response) => response.ok ? response.blob() : null)
+      .then((blob) => {
+        setSegUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return blob ? URL.createObjectURL(blob) : '';
+        });
+      })
+      .catch((error) => { if (error.name !== 'AbortError') setSegUrl(''); });
+    return () => controller.abort();
+  }, [segmentation?.jobId, segmentation?.visible, (segmentation?.rois || []).join(','), plane, index, count]);
 
   useEffect(() => () => {
     if (url) URL.revokeObjectURL(url);
@@ -200,6 +225,7 @@ function MprPane({
         <div className="radiology-mpr__frame" ref={frameRef}>
           <img src={url} alt="" draggable={false} />
           {mask ? <img className="radiology-stage__overlay" src={mask} alt="" style={{ opacity: (threshold?.opacity ?? 55) / 100 }} /> : null}
+          {segUrl ? <img className="neuromri-cam" src={segUrl} alt="" style={{ opacity: (segmentation?.opacity ?? 55) / 100 }} /> : null}
           <span className="radiology-mpr__hair radiology-mpr__hair--v" style={{ left: `${hair.x * 100}%` }} />
           <span className="radiology-mpr__hair radiology-mpr__hair--h" style={{ top: `${hair.y * 100}%` }} />
         </div>
@@ -238,6 +264,7 @@ export default function RadiologyMprViewer({
   studyLabel = '',
   modalityLabel = '',
   tool = 'stack',
+  segmentation = null,
 }) {
   const counts = planeCounts || { axial: 1, coronal: 1, sagittal: 1 };
 
@@ -270,6 +297,7 @@ export default function RadiologyMprViewer({
           huScale={hu ? 'hu' : 'native'}
           studyLabel={studyLabel}
           modalityLabel={modalityLabel}
+          segmentation={segmentation}
         />
       ))}
       {showVolume ? (
@@ -290,6 +318,7 @@ export default function RadiologyMprViewer({
             cursor={cursor}
             planeCounts={counts}
             externalThreshold={threshold}
+            segmentation={segmentation}
           />
         </div>
       ) : null}

@@ -980,3 +980,133 @@
   color: var(--text-dim);
   font-size: 0.7rem;
 }
+
+.anatomy-explorer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border-subtle, #e6e6e6);
+  border-radius: 16px;
+  background: var(--bg-elevated, #fff);
+}
+
+.anatomy-explorer__head,
+.anatomy-explorer__foot,
+.anatomy-explorer__regions-head,
+.anatomy-region__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.anatomy-explorer__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.anatomy-explorer__meta,
+.anatomy-explorer__foot p {
+  margin: 0;
+  color: var(--text-dim, #6b7280);
+  font-size: 12px;
+}
+
+.anatomy-explorer__badge,
+.anatomy-region__count {
+  border-radius: 999px;
+  background: #f3f4f6;
+  color: #374151;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+
+.anatomy-explorer__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.anatomy-explorer__tabs button,
+.anatomy-explorer__regions-head button,
+.anatomy-region__all {
+  border: 0;
+  background: transparent;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.anatomy-explorer__tabs button.is-active {
+  background: #f3f4f6;
+  color: #111827;
+  border-radius: 999px;
+  font-weight: 600;
+  padding: 6px 0;
+}
+
+.anatomy-explorer__search {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.anatomy-explorer__regions-head {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #9ca3af;
+}
+
+.anatomy-region__row {
+  width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.anatomy-region__items {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px 8px 8px;
+}
+
+.anatomy-structure {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.anatomy-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.anatomy-explorer__run {
+  border: 0;
+  border-radius: 999px;
+  background: #111827;
+  color: #fff;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.anatomy-explorer__run:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
