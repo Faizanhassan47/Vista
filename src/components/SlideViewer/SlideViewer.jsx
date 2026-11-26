@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Activity, AlertTriangle, ChevronDown, Loader2, Maximize2, Move, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Activity, AlertTriangle, ChevronDown, Loader2 } from 'lucide-react';
 import WsiViewer from '../WsiViewer/WsiViewer';
 import RadiologyViewer from './RadiologyViewer';
 import Tabs from '../Tabs/Tabs';
@@ -173,14 +173,6 @@ export default function SlideViewer({ slide, zoom, setZoom, position, setPositio
             <span>Zoom {Math.round(zoom * 100)}%</span>
           </div>
         </div>
-        <aside className="radiology-tool-rail" aria-label="Viewer tools">
-          <button type="button" className="btn-control-secondary" title="Zoom out" onClick={() => setZoom((value) => Math.max(0.2, value / 1.4))}><ZoomOut size={15} /></button>
-          <button type="button" className="btn-control-secondary" title="Zoom in" onClick={() => setZoom((value) => Math.min(10, value * 1.4))}><ZoomIn size={15} /></button>
-          <button type="button" className="btn-control-secondary" title="Pan" onClick={() => {}}><Move size={15} /></button>
-          <div className="radiology-tool-rail__spacer" />
-          <button type="button" className="btn-control-secondary" title="Reset" onClick={reset}><RotateCcw size={15} /></button>
-          <button type="button" className="btn-control-secondary" title="Fit" onClick={() => { setZoom(0.5); setPosition({ x: 0, y: 0 }); }}><Maximize2 size={15} /></button>
-        </aside>
         <PictureAiPanel slide={slide} />
       </div>
     </div>

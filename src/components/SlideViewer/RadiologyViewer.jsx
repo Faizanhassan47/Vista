@@ -32,6 +32,11 @@ function midCursor(counts) {
   };
 }
 
+const RAD_AI_MODELS = [
+  { id: 'neuromri', label: 'NeuroMRI EfficientNet-B0', hint: 'Classifies the active 2D MRI slice into dataset categories.' },
+  { id: 'totalseg', label: 'TotalSegmentator', hint: 'Anatomical structures on a verified CT or MRI volume.' },
+];
+
 function NeuroMriPanel({ slide, meta, viewMode, plane, index, mprCursor, result, busy, error, onRun, onVerified, onSegOverlay, onSegState }) {
   const [open, setOpen] = useState(true);
   const [feature, setFeature] = useState('neuromri');
@@ -48,79 +53,72 @@ function NeuroMriPanel({ slide, meta, viewMode, plane, index, mprCursor, result,
     ? 'axial'
     : (viewMode === 'mpr' ? (plane === '3d' ? 'axial' : plane) : (isNifti ? plane : 'axial'));
   const activeIndex = (viewMode === 'mpr' || viewMode === '3d') ? (mprCursor?.[activePlane] ?? index) : index;
+  const selectedModel = RAD_AI_MODELS.find((item) => item.id === feature) || RAD_AI_MODELS[0];
   useEffect(() => { setFeature(isCt ? 'totalseg' : 'neuromri'); }, [slide?.id, isCt]);
   if (!meta) return null;
   const showModel = isMr;
   const scores = result?.class_scores ? Object.entries(result.class_scores).sort((a, b) => b[1] - a[1]) : [];
+  const sliceLabel = `${String(activePlane).toUpperCase()} · slice ${(activeIndex ?? 0) + 1}`;
   return (
-    <section className="ai-panel" aria-label="AI analysis">
-      <div
-        className="ai-panel-header"
-        role="button"
-        tabIndex={0}
+    <section className="rad-ai" aria-label="AI analysis">
+      <button
+        type="button"
+        className="rad-ai__header"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        onKeyDown={(event) => (event.key === 'Enter' || event.key === ' ') && setOpen((value) => !value)}
       >
-        <div className="ai-panel-header-left">
-          <Activity size={15} aria-hidden="true" />
-          <div>
-            <p className="ai-panel-title">AI Analysis</p>
-            {result && !result.stale && (
-              <p className="ai-panel-subtitle">{result.predicted_class} · NeuroMRI EfficientNet-B0</p>
-            )}
-          </div>
-        </div>
-        <ChevronDown size={14} className={`ai-panel-chevron${open ? ' ai-panel-chevron--open' : ''}`} aria-hidden="true" />
-      </div>
+        <span className="rad-ai__header-main">
+          <Activity size={14} aria-hidden="true" />
+          <span className="rad-ai__title">AI</span>
+          {result && !result.stale && feature === 'neuromri' && (
+            <span className="rad-ai__pill">{result.predicted_class}</span>
+          )}
+        </span>
+        <ChevronDown size={14} className={`rad-ai__chevron${open ? ' is-open' : ''}`} aria-hidden="true" />
+      </button>
+
       {open && (
-        <>
-          <p className="ai-disclaimer" role="note">
-            <AlertTriangle size={11} aria-hidden="true" /> Research Use Only — Not for Clinical Diagnosis
+        <div className="rad-ai__body">
+          <p className="rad-ai__ruo" role="note">
+            <AlertTriangle size={11} aria-hidden="true" /> Research use only — not for clinical diagnosis
           </p>
-          <div className="ai-feature-selector">
-            <p className="ai-feature-selector__label">AI features on this study</p>
-            <div className="ai-feature-list">
-              <div className={`ai-feature-list__item${feature === 'neuromri' ? ' is-selected' : ''}`}>
-                <div>
-                  <strong>NeuroMRI EfficientNet-B0</strong>
-                  <span>{result && !result.stale ? 'Showing this slice' : 'Not run on this slice'}</span>
-                  <p className="ai-feature-selector__description">Classifies one selected 2D brain MRI slice into 10 dataset categories.</p>
-                </div>
-                <div className="ai-feature-list__actions">
-                  <button type="button" aria-pressed={feature === 'neuromri'} onClick={() => setFeature('neuromri')}>{feature === 'neuromri' ? 'Selected' : 'Use'}</button>
-                </div>
-              </div>
-              <div className={`ai-feature-list__item${feature === 'totalseg' ? ' is-selected' : ''}`}>
-                <div>
-                  <strong>TotalSegmentator</strong>
-                  <span>Anatomical segmentation</span>
-                  <p className="ai-feature-selector__description">Segments supported CT and MRI anatomical structures on a verified volume.</p>
-                </div>
-                <div className="ai-feature-list__actions">
-                  <button type="button" aria-pressed={feature === 'totalseg'} onClick={() => setFeature('totalseg')}>{feature === 'totalseg' ? 'Selected' : 'Use'}</button>
-                </div>
-              </div>
-            </div>
-            <p className="ai-feature-selector__description">Choose one model. Scores and masks are research outputs, not a diagnosis.</p>
-          </div>
+
+          <label className="rad-ai__field">
+            <span>Model</span>
+            <select
+              value={feature}
+              aria-label="AI model"
+              onChange={(event) => setFeature(event.target.value)}
+            >
+              {RAD_AI_MODELS.map((model) => (
+                <option key={model.id} value={model.id}>{model.label}</option>
+              ))}
+            </select>
+          </label>
+
           {feature === 'totalseg' ? (
-            <TotalSegmentatorPanel
-              embedded
-              slide={slide}
-              meta={meta}
-              viewMode={viewMode}
-              plane={activePlane}
-              index={activeIndex}
-              onOverlay={onSegOverlay}
-              onState={onSegState}
-            />
+            <>
+              <p className="rad-ai__hint">{selectedModel.hint}</p>
+              <TotalSegmentatorPanel
+                embedded
+                slide={slide}
+                meta={meta}
+                viewMode={viewMode}
+                plane={activePlane}
+                index={activeIndex}
+                onOverlay={onSegOverlay}
+                onState={onSegState}
+              />
+            </>
           ) : !showModel ? (
             needsMriVerification ? (
-              <div className="ai-feature-selector">
-                <p className="ai-feature-selector__description">This NIfTI volume has no verified MRI modality. NIfTI is a file format, not a modality, so classification stays off until an authorized user confirms the source is MRI. Intensities and the filename are not used as proof.</p>
-                <div className="ai-actions">
-                  <button type="button" className="ai-action-btn" disabled={verifying} onClick={async () => {
+              <div className="rad-ai__block">
+                <p className="rad-ai__hint">NIfTI is a file format, not a modality. Confirm MRI before classification.</p>
+                <button
+                  type="button"
+                  className="rad-ai__run"
+                  disabled={verifying}
+                  onClick={async () => {
                     setVerifying(true);
                     setVerifyError('');
                     try {
@@ -137,50 +135,57 @@ function NeuroMriPanel({ slide, meta, viewMode, plane, index, mprCursor, result,
                     } finally {
                       setVerifying(false);
                     }
-                  }}>{verifying ? 'Saving MRI verification…' : 'Verify this study as MRI'}</button>
-                </div>
+                  }}
+                >
+                  {verifying ? 'Saving…' : 'Verify as MRI'}
+                </button>
                 {verifyError && <p className="imaging-note imaging-note--error">{verifyError}</p>}
               </div>
             ) : (
-              <p className="ai-feature-selector__description">NeuroMRI classifies brain MRI slices only. This study is {isCt ? 'CT' : (modality || 'not marked as MR')}, so the model stays off. CT viewing and HU tools are unchanged.</p>
+              <p className="rad-ai__hint">
+                NeuroMRI is for brain MRI only. This study is {isCt ? 'CT' : (modality || 'not marked as MR')}.
+              </p>
             )
           ) : (
-            <>
-              {busy && (
-                <div className="ai-progress-card" role="status">
-                  <div className="ai-progress-header">
-                    <div className="ai-progress-title-row">
-                      <Loader2 size={13} className="spin ai-progress-spinner" aria-hidden="true" />
-                      <span className="ai-progress-stage">Running NeuroMRI on the selected slice…</span>
-                    </div>
-                  </div>
-                </div>
-              )}
-              {!busy && (
-                <div className="ai-actions">
-                  <button
-                    type="button"
-                    className="ai-action-btn"
-                    onClick={() => onRun({ slide_id: slide.id, plane: activePlane, index: activeIndex, frame_index: 0 })}
-                  >
-                    Classify selected slice
-                  </button>
-                </div>
+            <div className="rad-ai__block">
+              <div className="rad-ai__meta-row">
+                <span>{sliceLabel}</span>
+              </div>
+              <p className="rad-ai__hint">{selectedModel.hint}</p>
+              {busy ? (
+                <p className="rad-ai__status" role="status">
+                  <Loader2 size={13} className="spin" aria-hidden="true" /> Running…
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  className="rad-ai__run"
+                  onClick={() => onRun({ slide_id: slide.id, plane: activePlane, index: activeIndex, frame_index: 0 })}
+                >
+                  Classify slice
+                </button>
               )}
               {error && <p className="imaging-note imaging-note--error">{error}</p>}
               {result && (
-                <div className="ai-feature-selector">
-                  {result.stale && <p className="ai-feature-selector__description">This result is for a previous slice. Classify the current slice again.</p>}
-                  <p className="ai-panel-subtitle">Predicted class: {result.predicted_class}</p>
-                  <p className="ai-panel-subtitle">{result.model_version} · {result.source?.modality || 'MR'} · {result.source?.plane || 'frame'} {result.source?.slice_index ?? result.source?.frame_index}</p>
-                  {scores.map(([name, score]) => (
-                    <p key={name} className="ai-panel-subtitle">{name}: {Number(score).toFixed(4)}</p>
-                  ))}
+                <div className="rad-ai__result">
+                  {result.stale && <p className="rad-ai__hint">Result is from a previous slice — run again.</p>}
+                  <div className="rad-ai__result-head">
+                    <strong>{result.predicted_class}</strong>
+                    <span>{result.model_version || 'NeuroMRI'}</span>
+                  </div>
+                  <ul className="rad-ai__scores">
+                    {scores.map(([name, score]) => (
+                      <li key={name}>
+                        <span>{name}</span>
+                        <output>{Number(score).toFixed(3)}</output>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
-            </>
+            </div>
           )}
-        </>
+        </div>
       )}
     </section>
   );
@@ -699,7 +704,7 @@ export default function RadiologyViewer({ slide, onError }) {
         </div>
       </div>
 
-      <div className={`radiology-workstation__body${panelOpen ? '' : ' is-panel-closed'}${viewMode === '3d' ? ' is-rail-hidden' : ''}`}>
+      <div className={`radiology-workstation__body${panelOpen ? '' : ' is-panel-closed'}`}>
         {viewMode === '3d' ? (
           <MedicalVolume3DViewer
             slideId={slide.id}
@@ -787,22 +792,8 @@ export default function RadiologyViewer({ slide, onError }) {
           </div>
         )}
 
-        {viewMode !== '3d' && (
-          <aside className="radiology-tool-rail" aria-label="Viewer tools">
-            <button type="button" className={`btn-control-secondary${viewMode === '2d' ? ' is-active' : ''}`} title="2D" onClick={() => { if (plane === '3d') setPlane('axial'); setViewMode('2d'); }}><Scan size={15} /></button>
-            <button type="button" className={`btn-control-secondary${viewMode === 'mpr' ? ' is-active' : ''}`} title={mprSupported ? 'MPR' : 'MPR needs a NIfTI volume'} disabled={!mprSupported} onClick={enterMpr}><Columns2 size={15} /></button>
-            <button type="button" className={`btn-control-secondary${viewMode === '3d' ? ' is-active' : ''}`} title="3D" disabled={!meta?.volume_supported} onClick={() => setViewMode('3d')}><Box size={15} /></button>
-            <button type="button" className={`btn-control-secondary${tool === 'zoom' ? ' is-active' : ''}`} title="Zoom" onClick={() => setTool('zoom')}><ZoomIn size={15} /></button>
-            <button type="button" className={`btn-control-secondary${tool === 'pan' ? ' is-active' : ''}`} title="Pan" onClick={() => setTool('pan')}><Hand size={15} /></button>
-            <button type="button" className={`btn-control-secondary${tool === 'wl' ? ' is-active' : ''}`} title="Window / Level" onClick={() => setTool('wl')}><SunMedium size={15} /></button>
-            <button type="button" className={`btn-control-secondary${tool === 'stack' ? ' is-active' : ''}`} title="Scroll slices" onClick={() => setTool('stack')} disabled={!(viewMode === '2d' ? count > 1 : Boolean(meta?.plane_counts))}><RotateCcw size={15} /></button>
-            <div className="radiology-tool-rail__spacer" />
-            <button type="button" className="btn-control-secondary" title="Fit / reset" onClick={() => { resetView(); applyPreset(''); }}><Maximize2 size={15} /></button>
-          </aside>
-        )}
-
         {panelOpen && (
-          <aside className="imaging-panel annotation-panel" aria-label="Imaging controls">
+          <aside className="imaging-panel" aria-label="Imaging controls">
             <NeuroMriPanel
               slide={slide}
               meta={meta}

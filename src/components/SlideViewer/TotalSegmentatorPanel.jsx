@@ -13,8 +13,7 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
   const [catalog, setCatalog] = useState(null);
   const [selected, setSelected] = useState(DEFAULTS);
   const [query, setQuery] = useState('');
-  const [open, setOpen] = useState({});
-  const [tab, setTab] = useState('browse');
+  const [region, setRegion] = useState('all');
   const [job, setJob] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +34,7 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
           if (kept.length) return kept;
           return DEFAULTS.filter((id) => allowed.has(id));
         });
+        if (body.categories?.length) setRegion((current) => (current === 'all' || body.categories.includes(current) ? current : 'all'));
       })
       .catch(() => {});
     return () => controller.abort();
@@ -129,124 +129,141 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   };
 
-  const count = catalog?.count || 0;
-  const selectedItems = (catalog?.structures || []).filter((item) => selected.includes(item.id));
-  const regionCounts = useMemo(() => {
-    const totals = new Map();
-    const picked = new Map();
-    (catalog?.structures || []).forEach((item) => {
-      totals.set(item.category, (totals.get(item.category) || 0) + 1);
-      if (selected.includes(item.id)) picked.set(item.category, (picked.get(item.category) || 0) + 1);
+  const categories = catalog?.categories || [];
+  const q = query.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    const items = catalog?.structures || [];
+    return items.filter((item) => {
+      if (region !== 'all' && item.category !== region) return false;
+      if (!q) return true;
+      return item.label.toLowerCase().includes(q) || item.id.toLowerCase().includes(q);
     });
-    return { totals, picked };
-  }, [catalog, selected]);
+  }, [catalog, region, q]);
+
+  const selectRegion = () => {
+    setSelected((current) => [...new Set([...current, ...filtered.map((item) => item.id)])]);
+  };
 
   const body = (
-      <div className="anatomy-explorer">
-        <div className="anatomy-explorer__head">
-          <div>
-            <p className="anatomy-explorer__title">Anatomy Explorer</p>
-            <p className="anatomy-explorer__meta">{modality === 'CT' ? 'CT' : 'MRI'} · TotalSegmentator</p>
-          </div>
-          <span className="anatomy-explorer__badge">{selected.length} active</span>
+    <div className={`anatomy-explorer${embedded ? ' anatomy-explorer--compact' : ''}`}>
+      <div className="anatomy-explorer__toolbar">
+        <span className="anatomy-explorer__count">{selected.length} selected</span>
+        <span className="anatomy-explorer__meta">{modality === 'CT' ? 'CT' : 'MRI'}</span>
+      </div>
+
+      {!eligible ? (
+        <div className="anatomy-explorer__block">
+          <p className="anatomy-explorer__hint">This NIfTI study has no verified CT or MRI modality. The file format is not a modality.</p>
+          {slide?.file_type === 'nifti' && (
+            <div className="anatomy-explorer__actions">
+              <button type="button" className="anatomy-explorer__run" disabled={busy} onClick={() => verify('CT')}>Verify as CT</button>
+              <button type="button" className="anatomy-explorer__run anatomy-explorer__run--ghost" disabled={busy} onClick={() => verify('MR')}>Verify as MRI</button>
+            </div>
+          )}
         </div>
-        {!eligible ? (
-          <div>
-            <p className="ai-feature-selector__description">This NIfTI study has no verified CT or MRI modality, so segmentation stays off. The file format is not a modality.</p>
-            {slide?.file_type === 'nifti' && (
-              <div className="ai-actions">
-                <button type="button" className="ai-action-btn" disabled={busy} onClick={() => verify('CT')}>Verify as CT</button>
-                <button type="button" className="ai-action-btn" disabled={busy} onClick={() => verify('MR')}>Verify as MRI</button>
-              </div>
-            )}
+      ) : (
+        <>
+          <label className="anatomy-explorer__field">
+            <span>Region</span>
+            <select value={region} onChange={(event) => setRegion(event.target.value)} aria-label="Anatomical region">
+              <option value="all">All regions ({catalog?.count || 0})</option>
+              {categories.map((name) => {
+                const total = (catalog?.structures || []).filter((item) => item.category === name).length;
+                const picked = (catalog?.structures || []).filter((item) => item.category === name && selected.includes(item.id)).length;
+                return <option key={name} value={name}>{name} ({picked}/{total})</option>;
+              })}
+            </select>
+          </label>
+
+          <label className="anatomy-explorer__field">
+            <span>Search</span>
+            <input
+              type="search"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Filter structures…"
+              aria-label="Search structures"
+            />
+          </label>
+
+          <div className="anatomy-explorer__list-head">
+            <button type="button" onClick={selectRegion} disabled={!filtered.length}>
+              {region === 'all' ? 'Select all shown' : 'Select region'}
+            </button>
+            <button type="button" onClick={() => setSelected([])} disabled={!selected.length}>Clear</button>
           </div>
-        ) : (
-          <>
-            <div className="anatomy-explorer__tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={tab === 'browse'} className={tab === 'browse' ? 'is-active' : ''} onClick={() => setTab('browse')}>Browse</button>
-              <button type="button" role="tab" aria-selected={tab === 'selected'} className={tab === 'selected' ? 'is-active' : ''} onClick={() => setTab('selected')}>Selected</button>
-            </div>
-            {tab === 'browse' ? (
-              <>
-                <input className="anatomy-explorer__search" placeholder={`Search ${count || ''} structures...`} value={query} onChange={(event) => setQuery(event.target.value)} aria-label="Search structures" />
-                <div className="anatomy-explorer__regions-head">
-                  <span>Anatomical regions</span>
-                  <button type="button" onClick={() => setSelected([])}>Clear selection</button>
-                </div>
-                <div className="anatomy-explorer__regions">
-                  {(catalog?.categories || []).map((name) => {
-                    const items = (catalog?.structures || []).filter((item) => item.category === name && (!query.trim() || item.label.toLowerCase().includes(query.trim().toLowerCase()) || item.id.toLowerCase().includes(query.trim().toLowerCase())));
-                    if (query.trim() && !items.length) return null;
-                    const total = regionCounts.totals.get(name) || 0;
-                    const picked = regionCounts.picked.get(name) || 0;
-                    return (
-                      <div key={name} className="anatomy-region">
-                        <button type="button" className="anatomy-region__row" onClick={() => setOpen((current) => ({ ...current, [name]: !current[name] }))}>
-                          <span>{open[name] ? '▾' : '›'} {name}</span>
-                          <span className="anatomy-region__count">{picked}/{total}</span>
-                        </button>
-                        {open[name] && (
-                          <div className="anatomy-region__items">
-                            <button type="button" className="anatomy-region__all" onClick={() => setSelected((current) => [...new Set([...current, ...items.map((item) => item.id)])])}>Select region</button>
-                            {items.map((item) => (
-                              <label key={item.id} className="anatomy-structure">
-                                <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} />
-                                <span className="anatomy-swatch" style={{ background: `rgb(${item.color.join(',')})` }} aria-hidden="true" />
-                                <span>{item.label}</span>
-                              </label>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </>
-            ) : (
-              <div className="anatomy-region__items">
-                {selectedItems.length === 0 && <p className="anatomy-explorer__meta">No structures selected.</p>}
-                {selectedItems.map((item) => (
-                  <label key={item.id} className="anatomy-structure">
-                    <input type="checkbox" checked onChange={() => toggle(item.id)} />
-                    <span className="anatomy-swatch" style={{ background: `rgb(${item.color.join(',')})` }} aria-hidden="true" />
-                    <span>{item.label}</span>
-                  </label>
-                ))}
-              </div>
-            )}
-            {selected.length > 24 && <p className="imaging-note">A large selection uses more CPU time, memory, and disk. One job runs at a time.</p>}
-            <div className="anatomy-explorer__foot">
-              <div>
-                <strong>{selected.length} structures selected</strong>
-                <p>Each swatch is the overlay color in 2D, MPR, and 3D.</p>
-              </div>
-              <button type="button" className="anatomy-explorer__run" disabled={busy || !selected.length || job?.status === 'running' || job?.status === 'queued'} onClick={run}>Run segmentation</button>
-            </div>
-            {(busy || job?.status === 'queued' || job?.status === 'running') && (
-              <div className="ai-progress-card" role="status"><Loader2 size={13} className="spin" aria-hidden="true" /> {job?.stage || (job?.status === 'running' ? 'Running inference' : 'Queued')}</div>
-            )}
-            {job?.status === 'completed' && (
-              <>
-                <p className="ai-panel-subtitle">Status: completed{job.runtime_seconds ? ` · ${job.runtime_seconds}s` : ''}</p>
-                <label className="ai-panel-subtitle">Opacity {opacity}%
+
+          <div className="anatomy-explorer__list" role="listbox" aria-label="Structures">
+            {!filtered.length && <p className="anatomy-explorer__hint">No structures match.</p>}
+            {filtered.map((item) => (
+              <label key={item.id} className={`anatomy-structure${selected.includes(item.id) ? ' is-on' : ''}`}>
+                <input type="checkbox" checked={selected.includes(item.id)} onChange={() => toggle(item.id)} />
+                <span className="anatomy-swatch" style={{ background: `rgb(${item.color.join(',')})` }} aria-hidden="true" />
+                <span className="anatomy-structure__label">{item.label}</span>
+              </label>
+            ))}
+          </div>
+
+          {selected.length > 24 && (
+            <p className="anatomy-explorer__hint">Large selections use more CPU, memory, and disk. One job runs at a time.</p>
+          )}
+
+          <button
+            type="button"
+            className="anatomy-explorer__run"
+            disabled={busy || !selected.length || job?.status === 'running' || job?.status === 'queued'}
+            onClick={run}
+          >
+            Run segmentation
+          </button>
+
+          {(busy || job?.status === 'queued' || job?.status === 'running') && (
+            <p className="anatomy-explorer__status" role="status">
+              <Loader2 size={13} className="spin" aria-hidden="true" />
+              {job?.stage || (job?.status === 'running' ? 'Running inference…' : 'Queued…')}
+            </p>
+          )}
+
+          {job?.status === 'completed' && (
+            <div className="anatomy-explorer__results">
+              <div className="anatomy-explorer__toolbar">
+                <span>Completed{job.runtime_seconds ? ` · ${job.runtime_seconds}s` : ''}</span>
+                <label className="anatomy-explorer__opacity">
+                  Opacity {opacity}%
                   <input type="range" min="0" max="100" value={opacity} onChange={(event) => setOpacity(Number(event.target.value))} />
                 </label>
+              </div>
+              <div className="anatomy-explorer__list anatomy-explorer__list--results">
                 {(job.measurements || []).map((item) => (
-                  <label key={item.roi} className="anatomy-structure">
-                    <input type="checkbox" checked={visible[item.roi] !== false} onChange={() => setVisible((current) => ({ ...current, [item.roi]: current[item.roi] === false }))} />
+                  <label key={item.roi} className={`anatomy-structure${visible[item.roi] === false ? '' : ' is-on'}`}>
+                    <input
+                      type="checkbox"
+                      checked={visible[item.roi] !== false}
+                      onChange={() => setVisible((current) => ({ ...current, [item.roi]: current[item.roi] === false }))}
+                    />
                     <span className="anatomy-swatch" style={{ background: `rgb(${(item.color || [120, 120, 120]).join(',')})` }} aria-hidden="true" />
-                    <span>{item.label}: {item.empty ? 'not in field of view' : `${item.volume_ml} mL`}{item.hu_mean != null ? ` · ${item.hu_mean} HU` : ''}{item.coverage_warning ? ' · truncated?' : ''}</span>
+                    <span className="anatomy-structure__label">
+                      {item.label}
+                      <small>
+                        {item.empty ? 'not in FOV' : `${item.volume_ml} mL`}
+                        {item.hu_mean != null ? ` · ${item.hu_mean} HU` : ''}
+                        {item.coverage_warning ? ' · truncated?' : ''}
+                      </small>
+                    </span>
                   </label>
                 ))}
-                <p className="ai-feature-selector__description">Visible structures are drawn on axial, coronal, and sagittal slices, and on the 3D volume. An empty mask means the structure was not in the scanned field of view.</p>
-              </>
-            )}
-            {job?.status === 'failed' && <p className="imaging-note imaging-note--error">{job.error || 'Segmentation failed'}</p>}
-          </>
-        )}
-        {error && <p className="imaging-note imaging-note--error">{error}</p>}
-      </div>
+              </div>
+              <p className="anatomy-explorer__hint">Toggles control overlays in 2D, MPR, and 3D. Empty means outside the scanned field of view.</p>
+            </div>
+          )}
+
+          {job?.status === 'failed' && <p className="imaging-note imaging-note--error">{job.error || 'Segmentation failed'}</p>}
+        </>
+      )}
+      {error && <p className="imaging-note imaging-note--error">{error}</p>}
+    </div>
   );
+
   if (embedded) return body;
   return (
     <section className="ai-panel" aria-label="TotalSegmentator">
