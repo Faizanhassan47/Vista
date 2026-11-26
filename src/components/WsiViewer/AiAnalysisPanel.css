@@ -984,129 +984,219 @@
 .anatomy-explorer {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--border-subtle, #e6e6e6);
-  border-radius: 16px;
-  background: var(--bg-elevated, #fff);
+  gap: 8px;
+  min-width: 0;
 }
 
-.anatomy-explorer__head,
-.anatomy-explorer__foot,
-.anatomy-explorer__regions-head,
-.anatomy-region__row {
+.anatomy-explorer--compact {
+  gap: 8px;
+}
+
+.anatomy-explorer__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--dicom-muted, var(--text-dim, #6b7280));
+  font-size: 0.7rem;
+}
+
+.anatomy-explorer__count {
+  color: var(--dicom-text, var(--text-main, #111827));
+  font-weight: 650;
+}
+
+.anatomy-explorer__meta {
+  margin: 0;
+  color: var(--dicom-muted, var(--text-dim, #6b7280));
+  font-size: 0.7rem;
+}
+
+.anatomy-explorer__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  color: var(--dicom-text, var(--text-main, #111827));
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.anatomy-explorer__field select,
+.anatomy-explorer__field input {
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 9px;
+  border-radius: 4px;
+  border: 1px solid var(--dicom-control-border, var(--border-interactive, #e5e7eb));
+  background: var(--dicom-control-bg, var(--bg-inner, #fff));
+  color: var(--dicom-text, var(--text-main, #111827));
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.anatomy-explorer__list-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.anatomy-explorer__title {
+.anatomy-explorer__list-head button {
   margin: 0;
-  font-size: 15px;
-  font-weight: 700;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--dicom-muted, #6b7280);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.anatomy-explorer__meta,
-.anatomy-explorer__foot p {
-  margin: 0;
-  color: var(--text-dim, #6b7280);
-  font-size: 12px;
+.anatomy-explorer__list-head button:hover:not(:disabled) {
+  color: var(--dicom-text, #111827);
 }
 
-.anatomy-explorer__badge,
-.anatomy-region__count {
+.anatomy-explorer__list-head button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.anatomy-explorer__list {
+  display: flex;
+  flex-direction: row;
+  gap: 1px;
+  max-height: 168px;
+  overflow-y: auto;
+}
+
+.anatomy-explorer__list--results {
+  max-height: 140px;
+}
+
+.anatomy-structure {
+  display: grid;
+  grid-template-columns: 14px 10px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--dicom-text, #111827);
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.anatomy-structure:hover,
+.anatomy-structure.is-on {
+  background: color-mix(in srgb, var(--dicom-accent, #c62828) 10%, transparent);
+}
+
+.anatomy-structure input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--dicom-accent, #c62828);
+}
+
+.anatomy-structure__label {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.anatomy-structure__label small {
+  color: var(--dicom-muted, #6b7280);
+  font-size: 0.65rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.anatomy-swatch {
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
-  background: #f3f4f6;
-  color: #374151;
-  font-size: 12px;
-  padding: 2px 8px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(0, 0, 0, 0.2);
 }
 
-.anatomy-explorer__tabs {
+.anatomy-explorer__hint {
+  margin: 0;
+  color: var(--dicom-muted, #6b7280);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
+
+.anatomy-explorer__actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
 
-.anatomy-explorer__tabs button,
-.anatomy-explorer__regions-head button,
-.anatomy-region__all {
-  border: 0;
-  background: transparent;
-  color: #6b7280;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.anatomy-explorer__tabs button.is-active {
-  background: #f3f4f6;
-  color: #111827;
-  border-radius: 999px;
-  font-weight: 600;
-  padding: 6px 0;
-}
-
-.anatomy-explorer__search {
-  width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-size: 13px;
-}
-
-.anatomy-explorer__regions-head {
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: #9ca3af;
-}
-
-.anatomy-region__row {
-  width: 100%;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  background: #fff;
-  padding: 10px 12px;
-  cursor: pointer;
-  text-align: left;
-}
-
-.anatomy-region__items {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  max-height: 220px;
-  overflow: auto;
-  padding: 4px 8px 8px;
-}
-
-.anatomy-structure {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-}
-
-.anatomy-swatch {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  flex: 0 0 auto;
-  border: 1px solid rgba(0, 0, 0, 0.15);
-}
-
 .anatomy-explorer__run {
-  border: 0;
-  border-radius: 999px;
-  background: #111827;
-  color: #fff;
-  padding: 8px 14px;
-  font-size: 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 34px;
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid var(--dicom-accent, #c62828);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--dicom-accent, #c62828) 16%, var(--dicom-control-bg, #fff));
+  color: var(--dicom-text, #111827);
+  font-size: 0.8rem;
+  font-weight: 650;
   cursor: pointer;
+}
+
+.anatomy-explorer__run--ghost {
+  border-color: var(--dicom-control-border, #e5e7eb);
+  background: var(--dicom-control-bg, #fff);
 }
 
 .anatomy-explorer__run:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.anatomy-explorer__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  color: var(--dicom-muted, #6b7280);
+  font-size: 0.74rem;
+}
+
+.anatomy-explorer__results {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--dicom-line, #e5e7eb);
+}
+
+.anatomy-explorer__opacity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 110px;
+  color: var(--dicom-muted, #6b7280);
+  font-size: 0.68rem;
+}
+
+.anatomy-explorer__opacity input {
+  width: 100%;
+  accent-color: var(--dicom-accent, #c62828);
+}
+
+.anatomy-explorer__block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

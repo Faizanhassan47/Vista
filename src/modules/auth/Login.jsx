@@ -42,7 +42,7 @@ export default function Login() {
     <section className="login-panel" aria-labelledby="login-title">
       <div className="login-panel__content">
         <header className="login-header">
-          <img className="login-brand" src={branding.logo || vistaLogo} alt="VISTA" />
+          <img className="login-brand" src={vistaLogo} alt="VISTA" />
           <h1 id="login-title">Sign in</h1>
           <p className="login-subtitle">{branding.subtitle}</p>
         </header>
