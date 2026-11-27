@@ -10,6 +10,33 @@ export const AI_LISTING = [
 
 export const AI_LISTING_BY_CODE = Object.fromEntries(AI_LISTING.map((feature) => [feature.code, feature]));
 
+export const AI_WORKSPACES = [
+  { id: 'pathology', label: 'Pathology viewer (WSI)' },
+  { id: 'radiology', label: 'Radiology viewer (DICOM / NIfTI)' },
+];
+
+const RADIOLOGY_ONLY_CODES = new Set(['NEUROMRI_SLICE_CLASSIFICATION', 'TOTALSEGMENTATOR']);
+
+export function featureWorkspaces(feature) {
+  if (Array.isArray(feature?.catalog_workspaces) && feature.catalog_workspaces.length) {
+    return feature.catalog_workspaces.map((item) => String(item).toLowerCase());
+  }
+  try {
+    const parsed = JSON.parse(feature?.catalog_workspaces_json || '[]');
+    if (Array.isArray(parsed) && parsed.length) {
+      return parsed.map((item) => String(item).toLowerCase());
+    }
+  } catch {
+    /* use defaults */
+  }
+  if (RADIOLOGY_ONLY_CODES.has(feature?.feature_code)) return ['radiology'];
+  return ['pathology'];
+}
+
+export function featureVisibleInWorkspace(feature, workspace) {
+  return featureWorkspaces(feature).includes(workspace);
+}
+
 export function modelListing(feature) {
   const fallback = AI_LISTING_BY_CODE[feature.feature_code] || { icon: Microscope, category: 'Pathology AI', summary: feature.description, purpose: feature.description, value: 'Provides governed decision support within the digital pathology workflow.', outputs: ['Assisted review'] };
   let savedOutputs = [];
@@ -24,5 +51,6 @@ export function modelListing(feature) {
     value: feature.catalog_value || fallback.value,
     outputs: savedOutputs.length ? savedOutputs : fallback.outputs,
     featured: hasSavedCard ? Boolean(feature.is_featured) : Boolean(fallback.featured),
+    workspaces: featureWorkspaces(feature),
   };
 }

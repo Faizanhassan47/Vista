@@ -21,11 +21,17 @@ export async function apiFetch(url, options = {}, hasRetriedCsrf = false) {
     if (csrfToken) headers.set('X-CSRF-Token', csrfToken);
   }
   const response = await fetch(url, { ...options, method, headers, credentials: 'include' });
+  if (options.signal?.aborted) {
+    throw new DOMException('The operation was aborted.', 'AbortError');
+  }
   if (response.status === 403 && !hasRetriedCsrf && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     const payload = await response.clone().json().catch(() => null);
     if (payload?.detail === 'Invalid CSRF token') {
       const apiPrefix = url.includes('/api/') ? url.slice(0, url.indexOf('/api/')) : '';
-      const refreshResponse = await fetch(`${apiPrefix}/api/auth/me`, { credentials: 'include' });
+      const refreshResponse = await fetch(`${apiPrefix}/api/auth/me`, {
+        credentials: 'include',
+        signal: options.signal,
+      });
       if (refreshResponse.ok) return apiFetch(url, options, true);
     }
   }

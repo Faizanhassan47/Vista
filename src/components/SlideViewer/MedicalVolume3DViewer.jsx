@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Sliders } from 'lucide-react';
 import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 import { findHuTissuePreset, HU_TISSUE_PRESETS } from './huTissuePresets';
@@ -66,8 +66,8 @@ function summarize(values) {
     if (value < min) min = value;
     if (value > max) max = value;
     if (index % step === 0) {
-      all.push(value);
-      if (value > 0) foreground.push(value);
+    all.push(value);
+    if (value > 0) foreground.push(value);
     }
   }
   const pick = (list) => {
@@ -385,11 +385,12 @@ export default function MedicalVolume3DViewer({
   showCrosshair = false,
   externalThreshold = null,
   onCommitThreshold = null,
-  dockControls = null,
   segmentation = null,
 }) {
   const host = useRef(null);
   const scene = useRef(null);
+  const settingsRef = useRef(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [status, setStatus] = useState('Loading volume…');
   const [preview, setPreview] = useState(false);
   const [preset, setPreset] = useState(hu ? 'Soft tissue' : 'Brain detail');
@@ -1204,11 +1205,29 @@ export default function MedicalVolume3DViewer({
     setQuality(next);
   }
 
+  useEffect(() => {
+    if (!settingsOpen) return undefined;
+    const onPointer = (event) => {
+      if (settingsRef.current && !settingsRef.current.contains(event.target)) {
+        setSettingsOpen(false);
+      }
+    };
+    const onKey = (event) => {
+      if (event.key === 'Escape') setSettingsOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointer);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', onPointer);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [settingsOpen]);
+
   if (compact) {
-    return (
+  return (
       <div className="radiology-3d-layout radiology-3d-layout--compact">
-        <div className="viewer radiology-stage medical-canvas radiology-3d">
-          <div ref={host} className="radiology-3d__canvas" />
+      <div className="viewer radiology-stage medical-canvas radiology-3d">
+        <div ref={host} className="radiology-3d__canvas" />
           <div className="radiology-overlay radiology-overlay--tl">
             <span>{preview ? 'Preview' : quality}{dimensions ? ` · ${dimensions}` : ''}</span>
             {showCrosshair && cursor ? (
@@ -1216,7 +1235,7 @@ export default function MedicalVolume3DViewer({
                 A{cursor.axial + 1}/C{cursor.coronal + 1}/S{cursor.sagittal + 1}
               </span>
             ) : null}
-          </div>
+      </div>
           {status ? <p className="viewer-hint-bar">{status}</p> : null}
         </div>
       </div>
@@ -1224,7 +1243,7 @@ export default function MedicalVolume3DViewer({
   }
 
   const controls = (
-      <aside className={`imaging-panel${dockControls ? ' imaging-panel--docked' : ''}`} aria-label="3D imaging controls">
+      <div className="radiology-3d__settings-panel" aria-label="3D imaging controls">
         <div className="imaging-panel__section">
           <h3>Display</h3>
           <p className="imaging-dims">{dimensions || 'Loading…'}</p>
@@ -1241,8 +1260,8 @@ export default function MedicalVolume3DViewer({
                 {asclepiosOptions.map((item) => (
                   <option key={item.id} value={item.id}>{item.label}</option>
                 ))}
-              </select>
-            </label>
+          </select>
+        </label>
           ) : (
             <label>Rendering preset
               <select value={preset} onChange={(event) => updatePreset(event.target.value)} disabled={thresholdOn && huVisible}>
@@ -1255,13 +1274,13 @@ export default function MedicalVolume3DViewer({
               Clinical volume looks from Asclepios (Bones, Soft Skin, Airways, MIP…). Threshold Apply still works as an exact HU mask.
             </p>
           )}
-          <label>Quality
+        <label>Quality
             <select value={quality} onChange={(event) => changeQuality(event.target.value)}>
               <option value="preview">Preview (fast)</option>
-              <option value="balanced">Balanced</option>
-              <option value="high">High quality</option>
-            </select>
-          </label>
+            <option value="balanced">Balanced</option>
+            <option value="high">High quality</option>
+          </select>
+        </label>
           <label>Volume opacity {opacity}%
             <input type="range" min="10" max="100" value={opacity} onChange={(event) => updateOpacity(Number(event.target.value))} disabled={thresholdOn && huVisible} />
           </label>
@@ -1494,7 +1513,7 @@ export default function MedicalVolume3DViewer({
         </details>
 
         <div className="imaging-panel__section">
-          <h3>Camera</h3>
+        <h3>Camera</h3>
           <div className="imaging-actions">
             <button type="button" className="btn-control-secondary" onClick={() => { scene.current?.renderer.resetCamera(); render(); }}>Fit</button>
             <button type="button" className="btn-control-secondary" onClick={() => { scene.current?.renderer.resetCamera(); render(); }}>Reset</button>
@@ -1509,11 +1528,11 @@ export default function MedicalVolume3DViewer({
               : (hu ? 'CT volumes use calibrated HU (same scale as 2D). Enable surface after Apply for a contour view.' : 'Presets use this volume’s own intensities.')}
           </p>
         </div>
-      </aside>
+      </div>
   );
 
   return (
-    <div className="radiology-3d-layout">
+    <div className="radiology-3d-layout radiology-3d-layout--overlay">
       <div className="viewer radiology-stage medical-canvas radiology-3d">
         <div ref={host} className="radiology-3d__canvas" />
         {showCrosshair && cursor ? (
@@ -1523,8 +1542,24 @@ export default function MedicalVolume3DViewer({
             </span>
           </div>
         ) : null}
+        <div className="radiology-3d__settings" ref={settingsRef}>
+          <button
+            type="button"
+            className={`btn-toolbar radiology-3d__settings-toggle${settingsOpen ? ' btn-toolbar--active' : ''}`}
+            aria-expanded={settingsOpen}
+            aria-controls="radiology-3d-settings-panel"
+            onClick={() => setSettingsOpen((value) => !value)}
+          >
+            <Sliders size={14} aria-hidden="true" />
+            3D settings
+          </button>
+          {settingsOpen && (
+            <div id="radiology-3d-settings-panel" className="radiology-3d__settings-menu" role="dialog" aria-label="3D settings">
+              {controls}
+            </div>
+          )}
+        </div>
       </div>
-      {dockControls ? createPortal(controls, dockControls) : controls}
     </div>
   );
 }

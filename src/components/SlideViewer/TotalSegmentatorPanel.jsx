@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 
-const DEFAULTS = ['liver', 'spleen', 'kidney_left', 'kidney_right'];
+const CT_DEFAULTS = ['liver', 'spleen', 'kidney_left', 'kidney_right'];
+const MR_DEFAULTS = ['brain', 'skull'];
 
 export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onOverlay, onState, embedded = false }) {
   const stored = String(meta?.calibration?.modality || '').toUpperCase();
@@ -11,7 +12,7 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
   const modality = stored === 'MRI' ? 'MR' : (stored || (dicom === 'MRI' ? 'MR' : dicom));
   const eligible = modality === 'CT' || modality === 'MR';
   const [catalog, setCatalog] = useState(null);
-  const [selected, setSelected] = useState(DEFAULTS);
+  const [selected, setSelected] = useState(modality === 'MR' ? MR_DEFAULTS : CT_DEFAULTS);
   const [query, setQuery] = useState('');
   const [region, setRegion] = useState('all');
   const [job, setJob] = useState(null);
@@ -19,6 +20,9 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
   const [error, setError] = useState('');
   const [visible, setVisible] = useState({});
   const [opacity, setOpacity] = useState(55);
+  const actionAbort = useRef(null);
+
+  useEffect(() => () => { actionAbort.current?.abort(); }, []);
 
   useEffect(() => {
     if (!eligible) return undefined;
@@ -32,7 +36,8 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
         setSelected((current) => {
           const kept = current.filter((id) => allowed.has(id));
           if (kept.length) return kept;
-          return DEFAULTS.filter((id) => allowed.has(id));
+          const preferred = (modality === 'MR' ? MR_DEFAULTS : CT_DEFAULTS).filter((id) => allowed.has(id));
+          return preferred.length ? preferred : body.structures.slice(0, 4).map((item) => item.id);
         });
         if (body.categories?.length) setRegion((current) => (current === 'all' || body.categories.includes(current) ? current : 'all'));
       })
@@ -48,22 +53,45 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
     const controller = new AbortController();
     apiFetch(`${API_BASE_URL}/api/ai/totalsegmentator/slides/${slide.id}`, { signal: controller.signal })
       .then((response) => response.ok ? response.json() : null)
-      .then((body) => { if (body?.job_id) setJob(body); })
+      .then((body) => {
+        if (!body?.job_id) return;
+        setJob(body);
+        const rois = body.generated_rois?.length ? body.generated_rois : body.rois;
+        if (Array.isArray(rois) && rois.length) setSelected(rois);
+      })
       .catch(() => {});
     return () => controller.abort();
   }, [slide?.id]);
 
   useEffect(() => {
     if (!job?.job_id || (job.status !== 'queued' && job.status !== 'running')) return undefined;
+    const controller = new AbortController();
     const timer = setInterval(async () => {
-      const response = await apiFetch(`${API_BASE_URL}/api/ai/totalsegmentator/jobs/${job.job_id}`);
-      const body = await response.json().catch(() => ({}));
-      if (response.ok) setJob(body);
+      try {
+        const response = await apiFetch(`${API_BASE_URL}/api/ai/totalsegmentator/jobs/${job.job_id}`, {
+          signal: controller.signal,
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || controller.signal.aborted) return;
+        setJob(body);
+        if (body.status === 'completed') {
+          const rois = body.generated_rois?.length ? body.generated_rois : body.rois;
+          if (Array.isArray(rois) && rois.length) setSelected(rois);
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+      }
     }, 3000);
-    return () => clearInterval(timer);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
   }, [job?.job_id, job?.status]);
 
-  const visibleRois = selected.filter((id) => visible[id] !== false);
+  const availableRois = job?.status === 'completed'
+    ? (job.generated_rois?.length ? job.generated_rois : job.rois) || []
+    : selected;
+  const visibleRois = availableRois.filter((id) => selected.includes(id) && visible[id] !== false);
 
   useEffect(() => {
     onState?.({ job, visible: visibleRois.length > 0, opacity, rois: visibleRois });
@@ -88,6 +116,9 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
   }, [opacity]);
 
   const verify = async (next) => {
+    actionAbort.current?.abort();
+    const controller = new AbortController();
+    actionAbort.current = controller;
     setBusy(true);
     setError('');
     try {
@@ -95,18 +126,23 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slide_id: slide.id, modality: next }),
+        signal: controller.signal,
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.detail || 'Modality verification was not saved');
       window.location.reload();
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || 'Modality verification was not saved');
     } finally {
-      setBusy(false);
+      if (!controller.signal.aborted) setBusy(false);
     }
   };
 
   const run = async () => {
+    actionAbort.current?.abort();
+    const controller = new AbortController();
+    actionAbort.current = controller;
     setBusy(true);
     setError('');
     try {
@@ -114,14 +150,16 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ slide_id: slide.id, rois: selected }),
+        signal: controller.signal,
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.detail || 'TotalSegmentator did not start');
-      setJob(body);
+      if (!controller.signal.aborted) setJob(body);
     } catch (err) {
+      if (err.name === 'AbortError') return;
       setError(err.message || 'TotalSegmentator did not start');
     } finally {
-      setBusy(false);
+      if (!controller.signal.aborted) setBusy(false);
     }
   };
 
@@ -221,6 +259,7 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
             <p className="anatomy-explorer__status" role="status">
               <Loader2 size={13} className="spin" aria-hidden="true" />
               {job?.stage || (job?.status === 'running' ? 'Running inference…' : 'Queued…')}
+              <small> CPU inference can take several minutes on large volumes.</small>
             </p>
           )}
 
@@ -257,7 +296,12 @@ export function TotalSegmentatorPanel({ slide, meta, viewMode, plane, index, onO
             </div>
           )}
 
-          {job?.status === 'failed' && <p className="imaging-note imaging-note--error">{job.error || 'Segmentation failed'}</p>}
+          {job?.status === 'failed' && (
+            <p className="imaging-note imaging-note--error">
+              {job.error || 'Segmentation failed'}
+              {' '}Select structures and run segmentation again.
+            </p>
+          )}
         </>
       )}
       {error && <p className="imaging-note imaging-note--error">{error}</p>}

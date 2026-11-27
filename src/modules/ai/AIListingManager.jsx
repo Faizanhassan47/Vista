@@ -1,19 +1,52 @@
 import { useMemo, useState } from 'react';
 import { Minus, Pencil, Plus, Save, Trash2 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { AI_LISTING, modelListing } from './aiListing';
+import { AI_LISTING, AI_WORKSPACES, featureWorkspaces, modelListing } from './aiListing';
 import Modal from '../../components/Modal/Modal';
 import './AIListingManager.css';
 
 const DEFAULT_USD_TO_PKR_RATE = 280;
-const EMPTY = { featureId: '', title: '', category: '', summary: '', purpose: '', value: '', outputs: [''], isVisible: true, displayOrder: 0, sessionPriceUsd: '', usdToPkrRate: DEFAULT_USD_TO_PKR_RATE };
+const EMPTY = {
+  featureId: '',
+  title: '',
+  category: '',
+  summary: '',
+  purpose: '',
+  value: '',
+  outputs: [''],
+  isVisible: true,
+  displayOrder: 0,
+  sessionPriceUsd: '',
+  usdToPkrRate: DEFAULT_USD_TO_PKR_RATE,
+  workspaces: ['pathology'],
+};
 const isDeleted = (feature) => feature.is_catalog_deleted === true || feature.is_catalog_deleted === 1 || feature.is_catalog_deleted === '1';
 const isConfigured = (feature) => !isDeleted(feature) && Boolean(feature.catalog_title);
 
 function formFor(feature) {
   if (!feature) return EMPTY;
   const detail = modelListing(feature);
-  return { featureId: String(feature.id), title: feature.catalog_title || feature.feature_name, category: detail.category, summary: detail.summary, purpose: detail.purpose, value: detail.value, outputs: detail.outputs.length ? detail.outputs : [''], isVisible: feature.is_catalog_visible !== false && feature.is_catalog_visible !== 0, displayOrder: Number(feature.catalog_display_order || 0), sessionPriceUsd: feature.catalog_session_price_usd ?? '', usdToPkrRate: feature.catalog_usd_to_pkr_rate ?? DEFAULT_USD_TO_PKR_RATE };
+  return {
+    featureId: String(feature.id),
+    title: feature.catalog_title || feature.feature_name,
+    category: detail.category,
+    summary: detail.summary,
+    purpose: detail.purpose,
+    value: detail.value,
+    outputs: detail.outputs.length ? detail.outputs : [''],
+    isVisible: feature.is_catalog_visible !== false && feature.is_catalog_visible !== 0,
+    displayOrder: Number(feature.catalog_display_order || 0),
+    sessionPriceUsd: feature.catalog_session_price_usd ?? '',
+    usdToPkrRate: feature.catalog_usd_to_pkr_rate ?? DEFAULT_USD_TO_PKR_RATE,
+    workspaces: featureWorkspaces(feature),
+  };
+}
+
+function workspaceLabel(ids) {
+  return AI_WORKSPACES
+    .filter((item) => ids.includes(item.id))
+    .map((item) => item.label.replace(/ \(.*\)$/, ''))
+    .join(' · ') || 'No workspace';
 }
 
 export default function AIListingManager({ features, onSave, onRemove, onToggleFeature, updatingFeatureId }) {
@@ -27,15 +60,38 @@ export default function AIListingManager({ features, onSave, onRemove, onToggleF
   function startAdd() { setForm({ ...EMPTY, displayOrder: configured.length + 1 }); }
   function updateOutput(index, value) { setForm((current) => ({ ...current, outputs: current.outputs.map((output, outputIndex) => outputIndex === index ? value : output) })); }
   function removeOutput(index) { setForm((current) => ({ ...current, outputs: current.outputs.filter((_, outputIndex) => outputIndex !== index) })); }
+  function toggleWorkspace(workspaceId) {
+    setForm((current) => {
+      const has = current.workspaces.includes(workspaceId);
+      const workspaces = has
+        ? current.workspaces.filter((item) => item !== workspaceId)
+        : [...current.workspaces, workspaceId];
+      return { ...current, workspaces };
+    });
+  }
 
   async function submit(event) {
     event.preventDefault();
     if (!selected) return;
     const outputs = form.outputs.map((item) => item.trim()).filter(Boolean);
     if (!outputs.length) { toast.error('Add at least one capability'); return; }
+    if (!form.workspaces.length) { toast.error('Select at least one workspace'); return; }
     setSaving(true);
     try {
-      await onSave(selected, { catalog_title: form.title.trim(), catalog_category: form.category.trim(), catalog_summary: form.summary.trim(), catalog_purpose: form.purpose.trim(), catalog_value: form.value.trim(), catalog_outputs: outputs, catalog_display_order: Number(form.displayOrder), is_catalog_visible: form.isVisible, is_catalog_deleted: false, catalog_session_price_usd: Number(form.sessionPriceUsd), catalog_usd_to_pkr_rate: Number(form.usdToPkrRate) });
+      await onSave(selected, {
+        catalog_title: form.title.trim(),
+        catalog_category: form.category.trim(),
+        catalog_summary: form.summary.trim(),
+        catalog_purpose: form.purpose.trim(),
+        catalog_value: form.value.trim(),
+        catalog_outputs: outputs,
+        catalog_display_order: Number(form.displayOrder),
+        is_catalog_visible: form.isVisible,
+        is_catalog_deleted: false,
+        catalog_session_price_usd: Number(form.sessionPriceUsd),
+        catalog_usd_to_pkr_rate: Number(form.usdToPkrRate),
+        catalog_workspaces: form.workspaces,
+      });
       toast.success(`${form.title.trim()} saved`);
       setForm(null);
     } catch (error) { toast.error(error.message || 'Could not save the AI card'); } finally { setSaving(false); }
@@ -49,7 +105,12 @@ export default function AIListingManager({ features, onSave, onRemove, onToggleF
 
   return <section className="ai-listing-manager" aria-labelledby="ai-listing-manager-title">
     <header className="ai-listing-manager__heading"><div><p className="page-eyebrow">Super Administrator</p><h2 id="ai-listing-manager-title">Manage AI Features</h2><p>Configure the cards users see without changing AI integrations, seats, or subscriptions.</p></div><button type="button" className="btn-primary" onClick={startAdd}><Plus size={16} />Add AI card</button></header>
-    <section className="ai-listing-manager__cards" aria-label="Configured AI cards">{configured.map((feature) => { const detail = modelListing(feature); const active = Boolean(feature.is_active); return <article key={feature.id}><div><span>{feature.is_catalog_visible ? 'Visible' : 'Hidden'} · Order {feature.catalog_display_order || 0}</span><h3>{detail.title}</h3><p>{detail.summary}</p><ul>{detail.outputs.map((output) => <li key={output}>{output}</li>)}</ul></div><div className="ai-listing-manager__card-actions"><span className={`ai-listing-manager__availability${active ? ' ai-listing-manager__availability--active' : ''}`} role="status">{active ? 'Enabled platform-wide' : 'Disabled platform-wide'}</span><button type="button" className={active ? 'btn-control-secondary' : 'btn-primary'} disabled={saving || updatingFeatureId === feature.id} onClick={() => onToggleFeature(feature)}>{updatingFeatureId === feature.id ? 'Updating…' : active ? 'Disable model' : 'Enable model'}</button><button type="button" className="btn-control-secondary" onClick={() => setForm(formFor(feature))}><Pencil size={14} />Edit</button><button type="button" className="btn-delete" disabled={saving} onClick={() => removeCard(feature)}><Trash2 size={14} />Remove</button></div></article>; })}{!configured.length && <div className="ai-listing-manager__empty"><h3>No AI cards configured</h3><p>Add a card to make an integrated AI feature visible in the AI Features catalog.</p></div>}</section>
+    <section className="ai-listing-manager__cards" aria-label="Configured AI cards">{configured.map((feature) => {
+      const detail = modelListing(feature);
+      const active = Boolean(feature.is_active);
+      const workspaces = featureWorkspaces(feature);
+      return <article key={feature.id}><div><span>{feature.is_catalog_visible ? 'Visible' : 'Hidden'} · Order {feature.catalog_display_order || 0} · {workspaceLabel(workspaces)}</span><h3>{detail.title}</h3><p>{detail.summary}</p><ul>{detail.outputs.map((output) => <li key={output}>{output}</li>)}</ul></div><div className="ai-listing-manager__card-actions"><span className={`ai-listing-manager__availability${active ? ' ai-listing-manager__availability--active' : ''}`} role="status">{active ? 'Enabled platform-wide' : 'Disabled platform-wide'}</span><button type="button" className={active ? 'btn-control-secondary' : 'btn-primary'} disabled={saving || updatingFeatureId === feature.id} onClick={() => onToggleFeature(feature)}>{updatingFeatureId === feature.id ? 'Updating…' : active ? 'Disable model' : 'Enable model'}</button><button type="button" className="btn-control-secondary" onClick={() => setForm(formFor(feature))}><Pencil size={14} />Edit</button><button type="button" className="btn-delete" disabled={saving} onClick={() => removeCard(feature)}><Trash2 size={14} />Remove</button></div></article>;
+    })}{!configured.length && <div className="ai-listing-manager__empty"><h3>No AI cards configured</h3><p>Add a card to make an integrated AI feature visible in the AI Features catalog.</p></div>}</section>
     <Modal open={Boolean(form)} title={isConfigured(selected || {}) ? 'Edit AI card' : 'Add AI card'} className="global-modal--wide" onClose={() => !saving && setForm(null)} footer={<button type="submit" form="ai-card-form" className="btn-primary" disabled={!selected || saving}><Save size={15} />{saving ? 'Saving…' : 'Save AI card'}</button>}>
     {form && <form id="ai-card-form" className="ai-listing-form" onSubmit={submit}>
       <label className="ai-listing-form__wide">AI integration<select required value={form.featureId} onChange={(event) => setForm(formFor(features.find((feature) => String(feature.id) === event.target.value)))}><option value="">Select an AI integration</option>{available.map((feature) => { const registry = AI_LISTING.find((item) => item.code === feature.feature_code); return <option key={feature.id} value={feature.id}>{registry?.name || feature.feature_name}{isConfigured(feature) ? ' — editing current card' : ''}</option>; })}</select><small>Each integration can have one card. Removed cards become available here again.</small></label>
@@ -62,6 +123,22 @@ export default function AIListingManager({ features, onSave, onRemove, onToggleF
       <label>USD to PKR rate<input required type="number" min="0.01" step="0.0001" value={form.usdToPkrRate} onChange={(event) => setForm({ ...form, usdToPkrRate: event.target.value })} /><small>Used to calculate the PKR price below.</small></label>
       <label>Session price (PKR)<input className="ai-listing-form__calculated-price" readOnly value={`PKR ${sessionPricePkr.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} /><small>Calculated automatically from the USD price and exchange rate.</small></label>
       <fieldset className="ai-listing-form__wide"><legend>Capabilities</legend>{form.outputs.map((output, index) => <div className="ai-listing-form__capability" key={`${index}-${output}`}><input required value={output} onChange={(event) => updateOutput(index, event.target.value)} placeholder="e.g. Nuclei detection" /><button type="button" className="btn-control-secondary" aria-label={`Remove capability ${index + 1}`} disabled={form.outputs.length === 1} onClick={() => removeOutput(index)}><Minus size={15} /></button></div>)}<button type="button" className="btn-control-secondary" onClick={() => setForm((current) => ({ ...current, outputs: [...current.outputs, ''] }))}><Plus size={15} />Add capability</button></fieldset>
+      <fieldset className="ai-listing-form__wide ai-listing-form__workspaces">
+        <legend>Visible in workspaces</legend>
+        <div className="ai-listing-form__workspace-list">
+          {AI_WORKSPACES.map((workspace) => (
+            <label key={workspace.id} className="ai-listing-form__toggle">
+              <input
+                type="checkbox"
+                checked={form.workspaces.includes(workspace.id)}
+                onChange={() => toggleWorkspace(workspace.id)}
+              />
+              <span>{workspace.label}</span>
+            </label>
+          ))}
+        </div>
+        <small>Controls which viewer shows this model. At least one workspace is required.</small>
+      </fieldset>
       <label>Display order<input type="number" min="0" max="10000" value={form.displayOrder} onChange={(event) => setForm({ ...form, displayOrder: event.target.value })} /></label>
       <label className="ai-listing-form__toggle"><input type="checkbox" checked={form.isVisible} onChange={(event) => setForm({ ...form, isVisible: event.target.checked })} /><span>Visible on AI Features page</span></label>
     </form>}
