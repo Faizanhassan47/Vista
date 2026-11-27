@@ -53,7 +53,6 @@
   padding: var(--space-2) var(--space-4);
   background: rgba(245, 158, 11, 0.10);
   border: 1px solid rgba(245, 158, 11, 0.35);
-  border-left: 3px solid #d97706;
   border-radius: var(--radius-sm);
   font-size: var(--font-size-xs);
   color: #92400e;
@@ -108,7 +107,6 @@
   justify-content: space-between;
   gap: 8px;
   padding: 8px;
-  background: var(--bg-inner);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
 }

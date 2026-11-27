@@ -228,6 +228,20 @@ html[data-theme='dark'] .ai-listing-form select {
     width: auto;
 }
 
+.ai-listing-form__workspaces {
+    display: grid;
+    gap: var(--spacing-sm);
+}
+
+.ai-listing-form__workspace-list {
+    display: grid;
+    gap: var(--spacing-xs);
+}
+
+.ai-listing-form__workspaces small {
+    color: var(--color-text-muted);
+}
+
 @media (max-width: 800px) {
     .ai-listing-manager__cards {
         grid-template-columns: 1fr;

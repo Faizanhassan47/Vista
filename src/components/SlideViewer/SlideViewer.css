@@ -188,6 +188,8 @@
 :root[data-theme='light'] .radiology-workstation:fullscreen .radiology-toolbar,
 :root[data-theme='light'] .radiology-workstation.is-fullscreen .imaging-panel,
 :root[data-theme='light'] .radiology-workstation:fullscreen .imaging-panel,
+:root[data-theme='light'] .radiology-workstation.is-fullscreen .annotation-panel,
+:root[data-theme='light'] .radiology-workstation:fullscreen .annotation-panel,
 :root[data-theme='light'] .radiology-workstation.is-fullscreen .radiology-viewer__slider,
 :root[data-theme='light'] .radiology-workstation:fullscreen .radiology-viewer__slider {
   background: var(--dicom-panel);
@@ -197,10 +199,16 @@
 
 :root[data-theme='light'] .radiology-workstation.is-fullscreen .btn-control-secondary,
 :root[data-theme='light'] .radiology-workstation:fullscreen .btn-control-secondary,
+:root[data-theme='light'] .radiology-workstation.is-fullscreen .btn-toolbar,
+:root[data-theme='light'] .radiology-workstation:fullscreen .btn-toolbar,
 :root[data-theme='light'] .radiology-workstation.is-fullscreen .imaging-panel input,
 :root[data-theme='light'] .radiology-workstation:fullscreen .imaging-panel input,
+:root[data-theme='light'] .radiology-workstation.is-fullscreen .annotation-panel input,
+:root[data-theme='light'] .radiology-workstation:fullscreen .annotation-panel input,
 :root[data-theme='light'] .radiology-workstation.is-fullscreen .imaging-panel select,
-:root[data-theme='light'] .radiology-workstation:fullscreen .imaging-panel select {
+:root[data-theme='light'] .radiology-workstation:fullscreen .imaging-panel select,
+:root[data-theme='light'] .radiology-workstation.is-fullscreen .annotation-panel select,
+:root[data-theme='light'] .radiology-workstation:fullscreen .annotation-panel select {
   background: #ffffff;
   color: #253443;
   border-color: #c5d0d8;
@@ -553,10 +561,11 @@
   min-height: 0;
 }
 
-.radiology-workstation__body > .imaging-panel {
-  flex: 0 0 300px;
-  width: 300px;
-  max-width: 300px;
+.radiology-workstation__body > .imaging-panel,
+.radiology-workstation__body > .annotation-panel {
+  flex: 0 0 280px;
+  width: 280px;
+  max-width: 280px;
   min-width: 0;
   margin: 0;
   height: 100%;
@@ -569,12 +578,97 @@
   border-left: 1px solid var(--dicom-line, #2a2140);
   box-shadow: none !important;
   background: var(--dicom-panel);
+  color: var(--dicom-text);
+}
+
+.radiology-workstation__body > .annotation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+}
+
+.radiology-workstation__body > .annotation-panel .findings-tabs {
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  gap: 0;
+  background: var(--dicom-panel);
+  border-bottom: 1px solid var(--dicom-line);
+}
+
+.radiology-workstation__body > .annotation-panel .findings-tabs .app-tabs__tab {
+  flex: 1;
+  min-height: 40px;
+  padding: 11px 7px;
+  font-size: 0.72rem;
+}
+
+.radiology-workstation__body > .annotation-panel .selected-findings,
+.radiology-workstation__body > .annotation-panel .imaging-panel__section,
+.radiology-workstation__body > .annotation-panel .ai-panel {
+  padding: 12px 14px;
+}
+
+.radiology-workstation__body > .annotation-panel .ai-panel {
+  border-top: 0;
+  margin: 0;
 }
 
 .radiology-workstation__body > .imaging-panel > .ai-panel,
 .radiology-workstation__body > .imaging-panel > .rad-ai {
   border-top: 0;
   margin: 0;
+}
+
+.radiology-toolbar.advanced-viewer-toolbar {
+  background: var(--dicom-panel);
+  border-bottom: 1px solid var(--dicom-line);
+  color: var(--dicom-text);
+}
+
+.radiology-toolbar .btn-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--dicom-control-border);
+  border-radius: 6px;
+  background: var(--dicom-control-bg);
+  color: var(--dicom-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.radiology-toolbar .btn-toolbar:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.radiology-toolbar .btn-toolbar--active {
+  outline: 1px solid var(--dicom-accent);
+  background: var(--dicom-accent-soft);
+  border-color: var(--dicom-accent);
+  color: var(--dicom-text);
+}
+
+:root[data-theme='dark'] .radiology-toolbar .btn-toolbar--active {
+  color: #fff;
+}
+
+.radiology-workstation .ai-panel__section {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.radiology-workstation .ai-result-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
 }
 
 /* Radiology AI side panel — compact, no stacked feature cards */
@@ -797,11 +891,13 @@
   font-variant-numeric: tabular-nums;
 }
 
-.imaging-panel .anatomy-explorer {
+.imaging-panel .anatomy-explorer,
+.annotation-panel .anatomy-explorer {
   margin-top: 0;
 }
 
-.imaging-panel .anatomy-explorer__list {
+.imaging-panel .anatomy-explorer__list,
+.annotation-panel .anatomy-explorer__list {
   max-height: 160px;
 }
 
@@ -826,7 +922,8 @@
   border-top: 1px solid var(--dicom-line, #2a2140);
 }
 
-.imaging-panel h3 {
+.imaging-panel h3,
+.annotation-panel h3 {
   margin: 0;
   font-size: 0.78rem;
   font-weight: 700;
@@ -836,6 +933,7 @@
 }
 
 .imaging-panel label,
+.annotation-panel label,
 .imaging-pair label {
   display: flex;
   flex-direction: column;
@@ -852,7 +950,10 @@
 
 .imaging-panel input[type="text"],
 .imaging-panel input[type="number"],
-.imaging-panel select {
+.imaging-panel select,
+.annotation-panel input[type="text"],
+.annotation-panel input[type="number"],
+.annotation-panel select {
   width: 100%;
   min-height: 34px;
   padding: 6px 10px;
@@ -863,7 +964,8 @@
   font-size: 0.85rem;
 }
 
-.imaging-panel input[type="range"] {
+.imaging-panel input[type="range"],
+.annotation-panel input[type="range"] {
   width: 100%;
   margin: 2px 0 0;
   accent-color: var(--dicom-accent, #c62828);
@@ -1015,6 +1117,19 @@
   background: var(--dicom-bg, var(--color-surface, #ffffff));
 }
 
+.radiology-3d-layout--overlay {
+  display: block;
+  position: relative;
+  min-height: 0;
+  height: 100%;
+}
+
+.radiology-3d-layout--overlay > .radiology-3d {
+  width: 100%;
+  height: 100%;
+  min-height: 420px;
+}
+
 .radiology-3d {
   position: relative;
   display: flex;
@@ -1033,6 +1148,68 @@
   background: var(--dicom-viewport, #000);
 }
 
+.radiology-3d__settings {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  max-width: min(340px, calc(100% - 20px));
+}
+
+.radiology-3d__settings-toggle {
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  background: var(--dicom-control-bg, #151923) !important;
+  color: var(--dicom-text, #e8ecf4) !important;
+  border-color: var(--dicom-control-border, #2c3344) !important;
+}
+
+.radiology-3d__settings-menu {
+  width: min(320px, calc(100vw - 48px));
+  max-height: min(70vh, 560px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--dicom-line, #2a343b);
+  border-radius: 10px;
+  background: var(--dicom-panel, #12151c);
+  color: var(--dicom-text, #e8ecf4);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+}
+
+.radiology-3d__settings-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 12px 14px 14px;
+}
+
+.radiology-3d__settings-panel .imaging-panel__section + .imaging-panel__section,
+.radiology-3d__settings-panel details.imaging-panel__section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--dicom-line, #2a343b);
+}
+
+.radiology-3d__settings-panel label,
+.radiology-3d__settings-panel .imaging-pair label {
+  color: var(--dicom-text, #e8ecf4);
+}
+
+.radiology-3d__settings-panel input[type="text"],
+.radiology-3d__settings-panel input[type="number"],
+.radiology-3d__settings-panel select {
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--dicom-control-border, #2c3344);
+  background: var(--dicom-control-bg, #151923);
+  color: var(--dicom-text, #e8ecf4);
+}
+
 .radiology-3d-controls-dock > .imaging-panel--docked {
   flex: none;
   width: auto;
@@ -1043,7 +1220,7 @@
   border: none;
 }
 
-.radiology-3d-layout .imaging-panel {
+.radiology-3d-layout:not(.radiology-3d-layout--overlay):not(.radiology-3d-layout--compact) .imaging-panel {
   position: relative;
   flex: 0 0 300px;
   border-left: 1px solid #2a343b;
@@ -1087,7 +1264,8 @@
     min-height: 320px;
   }
 
-  .radiology-workstation__body > .imaging-panel {
+  .radiology-workstation__body > .imaging-panel,
+  .radiology-workstation__body > .annotation-panel {
     flex: 0 0 auto;
     width: 100%;
     max-width: none;

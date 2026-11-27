@@ -13,7 +13,9 @@ function PictureAiPanel({ slide }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
+  const classifyAbort = useRef(null);
   const scores = result?.class_scores ? Object.entries(result.class_scores).sort((a, b) => b[1] - a[1]) : [];
+  useEffect(() => () => { classifyAbort.current?.abort(); }, []);
   return (
     <aside className="imaging-panel" aria-label="AI analysis">
       <Tabs className="findings-tabs" ariaLabel="Viewer findings" value="ai" onChange={() => {}} items={[{ value: 'ai', label: 'AI insights' }]} />
@@ -48,6 +50,9 @@ function PictureAiPanel({ slide }) {
             {!busy && (
               <div className="ai-actions">
                 <button type="button" className="ai-action-btn" onClick={async () => {
+                  classifyAbort.current?.abort();
+                  const controller = new AbortController();
+                  classifyAbort.current = controller;
                   setBusy(true);
                   setError('');
                   try {
@@ -55,14 +60,16 @@ function PictureAiPanel({ slide }) {
                       method: 'POST',
                       headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify({ slide_id: slide.id, plane: 'axial', index: 0, frame_index: 0 }),
+                      signal: controller.signal,
                     });
                     const body = await response.json().catch(() => ({}));
                     if (!response.ok) throw new Error(body.detail || 'NeuroMRI could not classify this image');
-                    setResult(body);
+                    if (!controller.signal.aborted) setResult(body);
                   } catch (err) {
+                    if (err.name === 'AbortError') return;
                     setError(err.message || 'NeuroMRI could not classify this image');
                   } finally {
-                    setBusy(false);
+                    if (!controller.signal.aborted) setBusy(false);
                   }
                 }}>Classify this image</button>
               </div>
@@ -138,7 +145,7 @@ export default function SlideViewer({ slide, zoom, setZoom, position, setPositio
   }, [slide.file_type, setPosition, setZoom]);
 
   if (slide.file_type === 'wsi' || slide.file_type === 'dicom-wsi') return <WsiViewer slide={slide} onError={onError} syncViews={syncViews} syncedViewerRef={syncedViewerRef} externalViewerRef={viewerRef} onOpenRegistration={onOpenRegistration} onOpenCompare={onOpenCompare} activePanel={activePanel} />;
-  if (slide.file_type === 'dicom-stack' || slide.file_type === 'nifti') return <RadiologyViewer slide={slide} onError={onError} />;
+  if (slide.file_type === 'dicom-stack' || slide.file_type === 'nifti') return <RadiologyViewer slide={slide} onError={onError} activePanel={activePanel} />;
 
   const down = (event) => {
     setIsDragging(true);

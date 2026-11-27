@@ -22,9 +22,15 @@ import { viewerService } from '../../services/viewerService';
 import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 import { aiSubscriptionService } from '../../services/aiSubscriptionService';
+import { featureVisibleInWorkspace } from '../../modules/ai/aiListing';
 import { grandqcService } from '../../services/grandqcService';
 import { qcClassColor } from './GrandQCOverlay';
 import './AiAnalysisPanel.css';
+
+function isPathologyViewerFeature(feature) {
+  return featureVisibleInWorkspace(feature, 'pathology')
+    && feature.is_entitled && feature.is_active && feature.is_implemented && feature.user_enabled;
+}
 
 function formatDuration(sec) {
   if (sec == null || isNaN(sec) || sec < 0) return '—';
@@ -302,11 +308,7 @@ export default function AiAnalysisPanel({
     aiSubscriptionService.entitlements(controller.signal)
       .then((data) => {
         setEntitlements(data);
-        const available = (data?.features || []).filter((feature) => (
-          feature.feature_code !== 'NEUROMRI_SLICE_CLASSIFICATION'
-          && feature.feature_code !== 'TOTALSEGMENTATOR'
-          && feature.is_entitled && feature.is_active && feature.is_implemented && feature.user_enabled
-        ));
+        const available = (data?.features || []).filter(isPathologyViewerFeature);
         setSelectedFeatureCode((current) => available.some((feature) => feature.feature_code === current)
           ? current : (available[0]?.feature_code || ''));
       })
@@ -761,9 +763,7 @@ export default function AiAnalysisPanel({
     )
   );
   const elapsedSec = detail?.elapsed_seconds ?? detail?.inference_duration ?? null;
-  const availableFeatures = (entitlements?.features || []).filter((feature) => (
-    feature.is_entitled && feature.is_active && feature.is_implemented && feature.user_enabled
-  ));
+  const availableFeatures = (entitlements?.features || []).filter(isPathologyViewerFeature);
   const selectedFeature = availableFeatures.find((feature) => feature.feature_code === selectedFeatureCode);
   const canRunSelectedFeature = [
     'HOVERNET',

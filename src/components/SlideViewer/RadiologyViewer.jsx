@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, AlertTriangle, Box, ChevronDown, Columns2, Hand, Loader2, Maximize2, RotateCcw, Scan, SunMedium, ZoomIn, ZoomOut } from 'lucide-react';
+import { Box, Columns2, Hand, Maximize2, RotateCcw, Scan, SunMedium, ZoomIn, ZoomOut } from 'lucide-react';
 import '../WsiViewer/AiAnalysisPanel.css';
+import '../WsiViewer/WsiViewer.css';
+import '../WsiViewer/ViewerToolbar.css';
 import MedicalVolume3DViewer from './MedicalVolume3DViewer';
-import { TotalSegmentatorPanel } from './TotalSegmentatorPanel';
 import RadiologyMprViewer from './RadiologyMprViewer';
+import RadiologyAiPanel from './RadiologyAiPanel';
 import { findHuTissuePreset, HU_TISSUE_PRESETS } from './huTissuePresets';
+import Tabs from '../Tabs/Tabs';
 import { apiFetch } from '../../api';
 import { API_BASE_URL } from '../../config';
 
@@ -32,166 +35,7 @@ function midCursor(counts) {
   };
 }
 
-const RAD_AI_MODELS = [
-  { id: 'neuromri', label: 'NeuroMRI EfficientNet-B0', hint: 'Classifies the active 2D MRI slice into dataset categories.' },
-  { id: 'totalseg', label: 'TotalSegmentator', hint: 'Anatomical structures on a verified CT or MRI volume.' },
-];
-
-function NeuroMriPanel({ slide, meta, viewMode, plane, index, mprCursor, result, busy, error, onRun, onVerified, onSegOverlay, onSegState }) {
-  const [open, setOpen] = useState(true);
-  const [feature, setFeature] = useState('neuromri');
-  const [verifyError, setVerifyError] = useState('');
-  const [verifying, setVerifying] = useState(false);
-  const storedModality = String(meta?.calibration?.modality || '').toUpperCase();
-  const dicomModality = slide?.file_type === 'dicom-stack' ? String(meta?.modality || '').toUpperCase() : '';
-  const modality = storedModality || dicomModality;
-  const isMr = modality === 'MR' || modality === 'MRI';
-  const isCt = modality === 'CT';
-  const needsMriVerification = slide?.file_type === 'nifti' && !isMr && !isCt;
-  const isNifti = slide?.file_type === 'nifti';
-  const activePlane = viewMode === '3d'
-    ? 'axial'
-    : (viewMode === 'mpr' ? (plane === '3d' ? 'axial' : plane) : (isNifti ? plane : 'axial'));
-  const activeIndex = (viewMode === 'mpr' || viewMode === '3d') ? (mprCursor?.[activePlane] ?? index) : index;
-  const selectedModel = RAD_AI_MODELS.find((item) => item.id === feature) || RAD_AI_MODELS[0];
-  useEffect(() => { setFeature(isCt ? 'totalseg' : 'neuromri'); }, [slide?.id, isCt]);
-  if (!meta) return null;
-  const showModel = isMr;
-  const scores = result?.class_scores ? Object.entries(result.class_scores).sort((a, b) => b[1] - a[1]) : [];
-  const sliceLabel = `${String(activePlane).toUpperCase()} · slice ${(activeIndex ?? 0) + 1}`;
-  return (
-    <section className="rad-ai" aria-label="AI analysis">
-      <button
-        type="button"
-        className="rad-ai__header"
-        aria-expanded={open}
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span className="rad-ai__header-main">
-          <Activity size={14} aria-hidden="true" />
-          <span className="rad-ai__title">AI</span>
-          {result && !result.stale && feature === 'neuromri' && (
-            <span className="rad-ai__pill">{result.predicted_class}</span>
-          )}
-        </span>
-        <ChevronDown size={14} className={`rad-ai__chevron${open ? ' is-open' : ''}`} aria-hidden="true" />
-      </button>
-
-      {open && (
-        <div className="rad-ai__body">
-          <p className="rad-ai__ruo" role="note">
-            <AlertTriangle size={11} aria-hidden="true" /> Research use only — not for clinical diagnosis
-          </p>
-
-          <label className="rad-ai__field">
-            <span>Model</span>
-            <select
-              value={feature}
-              aria-label="AI model"
-              onChange={(event) => setFeature(event.target.value)}
-            >
-              {RAD_AI_MODELS.map((model) => (
-                <option key={model.id} value={model.id}>{model.label}</option>
-              ))}
-            </select>
-          </label>
-
-          {feature === 'totalseg' ? (
-            <>
-              <p className="rad-ai__hint">{selectedModel.hint}</p>
-              <TotalSegmentatorPanel
-                embedded
-                slide={slide}
-                meta={meta}
-                viewMode={viewMode}
-                plane={activePlane}
-                index={activeIndex}
-                onOverlay={onSegOverlay}
-                onState={onSegState}
-              />
-            </>
-          ) : !showModel ? (
-            needsMriVerification ? (
-              <div className="rad-ai__block">
-                <p className="rad-ai__hint">NIfTI is a file format, not a modality. Confirm MRI before classification.</p>
-                <button
-                  type="button"
-                  className="rad-ai__run"
-                  disabled={verifying}
-                  onClick={async () => {
-                    setVerifying(true);
-                    setVerifyError('');
-                    try {
-                      const response = await apiFetch(`${API_BASE_URL}/api/ai/neuromri/verify-modality`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ slide_id: slide.id }),
-                      });
-                      const body = await response.json().catch(() => ({}));
-                      if (!response.ok) throw new Error(body.detail || 'MRI verification was not saved');
-                      onVerified?.(body);
-                    } catch (err) {
-                      setVerifyError(err.message || 'MRI verification was not saved');
-                    } finally {
-                      setVerifying(false);
-                    }
-                  }}
-                >
-                  {verifying ? 'Saving…' : 'Verify as MRI'}
-                </button>
-                {verifyError && <p className="imaging-note imaging-note--error">{verifyError}</p>}
-              </div>
-            ) : (
-              <p className="rad-ai__hint">
-                NeuroMRI is for brain MRI only. This study is {isCt ? 'CT' : (modality || 'not marked as MR')}.
-              </p>
-            )
-          ) : (
-            <div className="rad-ai__block">
-              <div className="rad-ai__meta-row">
-                <span>{sliceLabel}</span>
-              </div>
-              <p className="rad-ai__hint">{selectedModel.hint}</p>
-              {busy ? (
-                <p className="rad-ai__status" role="status">
-                  <Loader2 size={13} className="spin" aria-hidden="true" /> Running…
-                </p>
-              ) : (
-                <button
-                  type="button"
-                  className="rad-ai__run"
-                  onClick={() => onRun({ slide_id: slide.id, plane: activePlane, index: activeIndex, frame_index: 0 })}
-                >
-                  Classify slice
-                </button>
-              )}
-              {error && <p className="imaging-note imaging-note--error">{error}</p>}
-              {result && (
-                <div className="rad-ai__result">
-                  {result.stale && <p className="rad-ai__hint">Result is from a previous slice — run again.</p>}
-                  <div className="rad-ai__result-head">
-                    <strong>{result.predicted_class}</strong>
-                    <span>{result.model_version || 'NeuroMRI'}</span>
-                  </div>
-                  <ul className="rad-ai__scores">
-                    {scores.map(([name, score]) => (
-                      <li key={name}>
-                        <span>{name}</span>
-                        <output>{Number(score).toFixed(3)}</output>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
-export default function RadiologyViewer({ slide, onError }) {
+export default function RadiologyViewer({ slide, onError, activePanel = 'findings' }) {
   const shellRef = useRef(null);
   const stageRef = useRef(null);
   const [fullscreen, setFullscreen] = useState(false);
@@ -207,7 +51,7 @@ export default function RadiologyViewer({ slide, onError }) {
   const [frameError, setFrameError] = useState('');
   const [viewMode, setViewMode] = useState('2d');
   const [panelOpen, setPanelOpen] = useState(true);
-  const [volumeControlsHost, setVolumeControlsHost] = useState(null);
+  const [inspectorTab, setInspectorTab] = useState(activePanel === 'ai' ? 'ai' : 'findings');
   const [tool, setTool] = useState('zoom');
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -240,11 +84,17 @@ export default function RadiologyViewer({ slide, onError }) {
   const [segJob, setSegJob] = useState(null);
   const neuroReq = useRef(0);
   const thresholdReq = useRef(0);
+  const neuroAbort = useRef(null);
   const sharedThreshold = useMemo(() => (
     huVisible && appliedThreshold
       ? { low: appliedThreshold.low, high: appliedThreshold.high, color: appliedThreshold.color, opacity: huOpacity, isolate: isolateRange }
       : null
   ), [huVisible, appliedThreshold, huOpacity, isolateRange]);
+
+  useEffect(() => () => { neuroAbort.current?.abort(); }, []);
+  useEffect(() => {
+    setInspectorTab(activePanel === 'ai' ? 'ai' : 'findings');
+  }, [activePanel]);
 
   function commitSharedThreshold(next) {
     if (!next) {
@@ -643,13 +493,13 @@ export default function RadiologyViewer({ slide, onError }) {
 
   return (
     <div className={`radiology-workstation${fullscreen ? ' is-fullscreen' : ''}`} ref={shellRef}>
-      <div className="radiology-toolbar" role="toolbar" aria-label="Imaging viewer">
-        <div className="radiology-toolbar__group">
-          <button type="button" className={`btn-control-secondary${viewMode === '2d' ? ' is-active' : ''}`} onClick={() => { if (plane === '3d') setPlane('axial'); setViewMode('2d'); }}><Scan size={14} /> 2D</button>
-          <button type="button" className={`btn-control-secondary${viewMode === '3d' ? ' is-active' : ''}`} disabled={!meta?.volume_supported} title={meta?.volume_supported ? 'Full-screen volume rendering' : 'A 3D view needs a NIfTI volume or a DICOM series of at least 8 images'} onClick={() => setViewMode('3d')}><Box size={14} /> 3D</button>
+      <div className="radiology-toolbar advanced-viewer-toolbar" role="toolbar" aria-label="Imaging viewer">
+        <div className="radiology-toolbar__group toolbar-group">
+          <button type="button" className={`btn-toolbar${viewMode === '2d' ? ' btn-toolbar--active' : ''}`} onClick={() => { if (plane === '3d') setPlane('axial'); setViewMode('2d'); }}><Scan size={14} /> 2D</button>
+          <button type="button" className={`btn-toolbar${viewMode === '3d' ? ' btn-toolbar--active' : ''}`} disabled={!meta?.volume_supported} title={meta?.volume_supported ? 'Full-screen volume rendering' : 'A 3D view needs a NIfTI volume or a DICOM series of at least 8 images'} onClick={() => setViewMode('3d')}><Box size={14} /> 3D</button>
           <button
             type="button"
-            className={`btn-control-secondary${viewMode === 'mpr' ? ' is-active' : ''}`}
+            className={`btn-toolbar${viewMode === 'mpr' ? ' btn-toolbar--active' : ''}`}
             disabled={!mprSupported}
             title={mprSupported ? 'Linked axial, coronal, and sagittal planes' : 'MPR needs a NIfTI volume'}
             onClick={enterMpr}
@@ -658,28 +508,28 @@ export default function RadiologyViewer({ slide, onError }) {
           </button>
         </div>
         {(viewMode === '2d' || viewMode === 'mpr') && (
-          <div className="radiology-toolbar__group">
+          <div className="radiology-toolbar__group toolbar-group">
             {viewMode === '2d' && (
               <>
-                <button type="button" className="btn-control-secondary" title="Zoom in" onClick={() => { setTool('zoom'); zoomBy(1.25); }}><ZoomIn size={14} /></button>
-                <button type="button" className="btn-control-secondary" title="Zoom out" onClick={() => { setTool('zoom'); zoomBy(0.8); }}><ZoomOut size={14} /></button>
-                <button type="button" className={`btn-control-secondary${tool === 'pan' ? ' is-active' : ''}`} title="Pan" onClick={() => setTool('pan')}><Hand size={14} /></button>
-                <button type="button" className="btn-control-secondary" title="Fit" onClick={resetView}>Fit</button>
+                <button type="button" className="btn-toolbar" title="Zoom in" onClick={() => { setTool('zoom'); zoomBy(1.25); }}><ZoomIn size={14} /></button>
+                <button type="button" className="btn-toolbar" title="Zoom out" onClick={() => { setTool('zoom'); zoomBy(0.8); }}><ZoomOut size={14} /></button>
+                <button type="button" className={`btn-toolbar${tool === 'pan' ? ' btn-toolbar--active' : ''}`} title="Pan" onClick={() => setTool('pan')}><Hand size={14} /></button>
+                <button type="button" className="btn-toolbar" title="Fit" onClick={resetView}>Fit</button>
               </>
             )}
             <button
               type="button"
-              className={`btn-control-secondary${tool === 'wl' ? ' is-active' : ''}`}
+              className={`btn-toolbar${tool === 'wl' ? ' btn-toolbar--active' : ''}`}
               title="Window/Level: select, then drag on the image — horizontal width, vertical level"
               onClick={() => setTool('wl')}
             >
               <SunMedium size={14} /> W/L
             </button>
-            <button type="button" className="btn-control-secondary" title="Reset view and window" onClick={() => { resetView(); applyPreset(''); }}><RotateCcw size={14} /></button>
+            <button type="button" className="btn-toolbar" title="Reset view and window" onClick={() => { resetView(); applyPreset(''); }}><RotateCcw size={14} /></button>
             {(viewMode === '2d' ? count > 1 : Boolean(meta?.plane_counts || (meta?.instance_count || 0) > 1)) && (
               <button
                 type="button"
-                className={`btn-control-secondary${tool === 'stack' ? ' is-active' : ''}`}
+                className={`btn-toolbar${tool === 'stack' ? ' btn-toolbar--active' : ''}`}
                 title="Scroll slices with the mouse wheel over the image"
                 onClick={() => setTool('stack')}
               >
@@ -687,9 +537,9 @@ export default function RadiologyViewer({ slide, onError }) {
               </button>
             )}
             {viewMode === '2d' && isVolume && (
-              <div className="radiology-toolbar__group" role="group" aria-label="Plane">
+              <div className="radiology-toolbar__group toolbar-group" role="group" aria-label="Plane">
                 {['axial', 'coronal', 'sagittal'].map((item) => (
-                  <button type="button" key={item} className={`btn-control-secondary${plane === item ? ' is-active' : ''}`} onClick={() => selectPlane(item)}>
+                  <button type="button" key={item} className={`btn-toolbar${plane === item ? ' btn-toolbar--active' : ''}`} onClick={() => selectPlane(item)}>
                     {item.charAt(0).toUpperCase() + item.slice(1)}
                   </button>
                 ))}
@@ -697,10 +547,10 @@ export default function RadiologyViewer({ slide, onError }) {
             )}
           </div>
         )}
-        <div className="radiology-toolbar__group radiology-toolbar__group--end">
-          <button type="button" className="btn-control-secondary" disabled title="Distance and angle tools stay with the pathology annotation workflow. This viewer does not calculate millimeters.">Measure</button>
-          <button type="button" className="btn-control-secondary" title="Fullscreen" onClick={toggleFullscreen}><Maximize2 size={14} /></button>
-          <button type="button" className={`btn-control-secondary${panelOpen ? ' is-active' : ''}`} onClick={() => setPanelOpen((value) => !value)}>{panelOpen ? 'Hide panel' : 'Show panel'}</button>
+        <div className="radiology-toolbar__group toolbar-group toolbar-group--right radiology-toolbar__group--end">
+          <button type="button" className="btn-toolbar" disabled title="Distance and angle tools stay with the pathology annotation workflow. This viewer does not calculate millimeters.">Measure</button>
+          <button type="button" className="btn-toolbar" title="Fullscreen" onClick={toggleFullscreen}><Maximize2 size={14} /></button>
+          <button type="button" className={`btn-toolbar${panelOpen ? ' btn-toolbar--active' : ''}`} onClick={() => setPanelOpen((value) => !value)}>{panelOpen ? 'Hide panel' : 'Show panel'}</button>
         </div>
       </div>
 
@@ -711,7 +561,6 @@ export default function RadiologyViewer({ slide, onError }) {
             hu={huSupported}
             externalThreshold={sharedThreshold}
             onCommitThreshold={commitSharedThreshold}
-            dockControls={panelOpen ? volumeControlsHost : null}
             segmentation={segJob?.job?.status === 'completed' && segJob.visible ? { jobId: segJob.job.job_id, rois: segJob.rois, opacity: segJob.opacity, visible: true } : null}
           />
         ) : viewMode === 'mpr' ? (
@@ -793,272 +642,299 @@ export default function RadiologyViewer({ slide, onError }) {
         )}
 
         {panelOpen && (
-          <aside className="imaging-panel" aria-label="Imaging controls">
-            <NeuroMriPanel
-              slide={slide}
-              meta={meta}
-              viewMode={viewMode}
-              plane={plane}
-              index={index}
-              mprCursor={mprCursor}
-              result={neuro}
-              busy={neuroBusy}
-              error={neuroError}
-              onVerified={(body) => setMeta((current) => ({ ...current, modality: body.modality, calibration: body.calibration }))}
-              onSegOverlay={setSegOverlay}
-              onSegState={setSegJob}
-              onRun={async (selection) => {
-                const requestId = neuroReq.current + 1;
-                neuroReq.current = requestId;
-                setNeuroBusy(true);
-                setNeuroError('');
-                try {
-                  const response = await apiFetch(`${API_BASE_URL}/api/ai/neuromri/predict`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(selection),
-                  });
-                  const body = await response.json().catch(() => ({}));
-                  if (neuroReq.current !== requestId) return;
-                  if (!response.ok) throw new Error(body.detail || 'NeuroMRI could not classify this slice');
-                  setNeuro({ ...body, stale: false, selection });
-                } catch (err) {
-                  if (neuroReq.current !== requestId) return;
-                  setNeuroError(err.message || 'NeuroMRI could not classify this slice');
-                } finally {
-                  if (neuroReq.current === requestId) setNeuroBusy(false);
-                }
-              }}
+          <aside className={`annotation-panel annotation-panel--${inspectorTab}`} aria-label="Imaging controls">
+            <Tabs
+              className="findings-tabs"
+              ariaLabel="Viewer findings"
+              value={inspectorTab}
+              onChange={setInspectorTab}
+              items={[{ value: 'findings', label: 'Findings' }, { value: 'ai', label: 'AI insights' }]}
             />
-            {viewMode === '3d' && <div ref={setVolumeControlsHost} className="radiology-3d-controls-dock" />}
-            {viewMode !== '3d' && (<>
-            <div className="imaging-panel__section">
-              <h3>Display</h3>
-              <p className="imaging-dims">{dimensionsLabel}</p>
-              <p className="imaging-note">
-                {viewMode === 'mpr'
-                  ? 'VolView-style layout · axial / coronal / sagittal / 3D · click crosshairs · wheel scrolls a plane'
-                  : (isVolume ? `${plane.charAt(0).toUpperCase() + plane.slice(1)} plane` : 'Rendered frame')}
-                {meta?.modality ? ` · ${meta.modality}` : ''}
-              </p>
-              <label>Window preset
-                <select value={preset} onChange={(event) => applyPreset(event.target.value)}>
-                  <option value="">Auto / Custom</option>
-                  {Object.keys(PRESETS.CT).map((name) => <option key={name} value={name}>{name}</option>)}
-                </select>
-              </label>
-              <div className="imaging-pair">
-                <label>Level (center)
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={wlCenterInput}
-                    placeholder="Auto"
-                    onChange={(event) => setWlCenterInput(event.target.value)}
-                    onBlur={() => {
-                      const center = Number(wlCenterInput);
-                      const width = Number(wlWidthInput || wlWidth || (isCt ? 400 : 1000));
-                      if (wlCenterInput.trim() === '') applyPreset('');
-                      else commitWl(center, width);
-                    }}
-                  />
-                </label>
-                <label>Window (width)
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={wlWidthInput}
-                    placeholder="Auto"
-                    onChange={(event) => setWlWidthInput(event.target.value)}
-                    onBlur={() => {
-                      const width = Number(wlWidthInput);
-                      const center = Number(wlCenterInput || wlCenter || (isCt ? 40 : 0));
-                      if (wlWidthInput.trim() === '') applyPreset('');
-                      else commitWl(center, width);
-                    }}
-                  />
-                </label>
-              </div>
-              <p className="imaging-note">
-                {viewMode === 'mpr'
-                  ? 'MPR: wheel over a plane to scroll slices. Select W/L then drag on a plane to change window/level. Side-panel presets also apply.'
-                  : viewMode === '3d'
-                    ? 'Window and level apply to the 2D and MPR slices. Volume opacity and rendering preset stay on the 3D display controls.'
-                    : '2D: select W/L then drag on the image (↔ width, ↕ level). Wheel scrolls slices (Ctrl+wheel zooms).'}
-              </p>
-            </div>
 
-            <div className="imaging-panel__section">
-                <h3>Threshold</h3>
-                <form className="imaging-stack" onSubmit={applyHu}>
-                  <label className="imaging-check">
-                    <input type="checkbox" checked={huVisible} onChange={(event) => setHuVisible(event.target.checked)} />
-                    Show overlay
+            {inspectorTab === 'findings' && (
+              <>
+                <section className="selected-findings">
+                  <div>
+                    <strong>Display</strong>
+                  </div>
+                  <p className="imaging-dims">{dimensionsLabel}</p>
+                  <p className="imaging-note">
+                    {viewMode === 'mpr'
+                      ? 'VolView-style layout · axial / coronal / sagittal / 3D · click crosshairs · wheel scrolls a plane'
+                      : (isVolume ? `${plane.charAt(0).toUpperCase() + plane.slice(1)} plane` : 'Rendered frame')}
+                    {meta?.modality ? ` · ${meta.modality}` : ''}
+                  </p>
+                  <label>Window preset
+                    <select value={preset} onChange={(event) => applyPreset(event.target.value)}>
+                      <option value="">Auto / Custom</option>
+                      {Object.keys(PRESETS.CT).map((name) => <option key={name} value={name}>{name}</option>)}
+                    </select>
                   </label>
-                  {huSupported ? (
-                    <>
-                      <label>Material / tissue
-                        <select
-                          value={huTissueId || 'custom'}
-                          onChange={(event) => {
-                            const id = event.target.value;
-                            if (id === 'custom') {
-                              setHuTissueId('');
-                              return;
-                            }
-                            const tissue = findHuTissuePreset(id);
-                            if (!tissue) return;
-                            setHuTissueId(id);
-                            setHuMin(String(tissue.min));
-                            setHuMax(String(tissue.max));
-                          }}
-                        >
-                          <option value="custom">Custom</option>
-                          {HU_TISSUE_PRESETS.map((tissue) => (
-                            <option key={tissue.id} value={tissue.id}>
-                              {tissue.label} ({tissue.rangeLabel} HU)
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <div className="hu-tissue-ref" role="table" aria-label="Standard HU ranges">
-                        <div className="hu-tissue-ref__head" role="row">
-                          <span role="columnheader">Material / tissue</span>
-                          <span role="columnheader">HU range</span>
-                        </div>
-                        {HU_TISSUE_PRESETS.map((tissue) => (
-                          <button
-                            key={tissue.id}
-                            type="button"
-                            role="row"
-                            className={`hu-tissue-ref__row${huTissueId === tissue.id ? ' is-active' : ''}`}
-                            onClick={() => {
-                              setHuTissueId(tissue.id);
+                  <div className="imaging-pair">
+                    <label>Level (center)
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={wlCenterInput}
+                        placeholder="Auto"
+                        onChange={(event) => setWlCenterInput(event.target.value)}
+                        onBlur={() => {
+                          const center = Number(wlCenterInput);
+                          const width = Number(wlWidthInput || wlWidth || (isCt ? 400 : 1000));
+                          if (wlCenterInput.trim() === '') applyPreset('');
+                          else commitWl(center, width);
+                        }}
+                      />
+                    </label>
+                    <label>Window (width)
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        value={wlWidthInput}
+                        placeholder="Auto"
+                        onChange={(event) => setWlWidthInput(event.target.value)}
+                        onBlur={() => {
+                          const width = Number(wlWidthInput);
+                          const center = Number(wlCenterInput || wlCenter || (isCt ? 40 : 0));
+                          if (wlWidthInput.trim() === '') applyPreset('');
+                          else commitWl(center, width);
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <p className="imaging-note">
+                    {viewMode === 'mpr'
+                      ? 'MPR: wheel over a plane to scroll slices. Select W/L then drag on a plane to change window/level. Side-panel presets also apply.'
+                      : viewMode === '3d'
+                        ? 'Window and level apply to the 2D and MPR slices. Volume opacity and rendering preset stay on the 3D display controls.'
+                        : '2D: select W/L then drag on the image (↔ width, ↕ level). Wheel scrolls slices (Ctrl+wheel zooms).'}
+                  </p>
+                </section>
+
+                <section className="imaging-panel__section">
+                  <div className="annotation-panel-heading">
+                    <div>
+                      <h3>Threshold</h3>
+                      <span>{unitLabel} overlay</span>
+                    </div>
+                  </div>
+                  <form className="imaging-stack" onSubmit={applyHu}>
+                    <label className="imaging-check">
+                      <input type="checkbox" checked={huVisible} onChange={(event) => setHuVisible(event.target.checked)} />
+                      Show overlay
+                    </label>
+                    {huSupported ? (
+                      <>
+                        <label>Material / tissue
+                          <select
+                            value={huTissueId || 'custom'}
+                            onChange={(event) => {
+                              const id = event.target.value;
+                              if (id === 'custom') {
+                                setHuTissueId('');
+                                return;
+                              }
+                              const tissue = findHuTissuePreset(id);
+                              if (!tissue) return;
+                              setHuTissueId(id);
                               setHuMin(String(tissue.min));
                               setHuMax(String(tissue.max));
                             }}
                           >
-                            <span role="cell">{tissue.label}</span>
-                            <span role="cell">{tissue.rangeLabel}</span>
-                          </button>
-                        ))}
-                      </div>
-                      {selectedTissue && (
-                        <p className="imaging-note">{selectedTissue.use}</p>
-                      )}
-                    </>
-                  ) : (
-                    <label>Preset
+                            <option value="custom">Custom</option>
+                            {HU_TISSUE_PRESETS.map((tissue) => (
+                              <option key={tissue.id} value={tissue.id}>
+                                {tissue.label} ({tissue.rangeLabel} HU)
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <div className="hu-tissue-ref" role="table" aria-label="Standard HU ranges">
+                          <div className="hu-tissue-ref__head" role="row">
+                            <span role="columnheader">Material / tissue</span>
+                            <span role="columnheader">HU range</span>
+                          </div>
+                          {HU_TISSUE_PRESETS.map((tissue) => (
+                            <button
+                              key={tissue.id}
+                              type="button"
+                              role="row"
+                              className={`hu-tissue-ref__row${huTissueId === tissue.id ? ' is-active' : ''}`}
+                              onClick={() => {
+                                setHuTissueId(tissue.id);
+                                setHuMin(String(tissue.min));
+                                setHuMax(String(tissue.max));
+                              }}
+                            >
+                              <span role="cell">{tissue.label}</span>
+                              <span role="cell">{tissue.rangeLabel}</span>
+                            </button>
+                          ))}
+                        </div>
+                        {selectedTissue && (
+                          <p className="imaging-note">{selectedTissue.use}</p>
+                        )}
+                      </>
+                    ) : (
+                      <label>Preset
+                        <select
+                          defaultValue="Custom"
+                          onChange={(event) => {
+                            const kind = INTENSITY_PRESETS[event.target.value];
+                            const stats = huStats;
+                            const vmin = Number(stats?.valueMin);
+                            const vmax = Number(stats?.valueMax);
+                            if (!kind || !Number.isFinite(vmin) || !Number.isFinite(vmax) || vmax <= vmin) return;
+                            const span = vmax - vmin;
+                            if (kind === 'lower') {
+                              setHuMin(String(Math.round(vmin)));
+                              setHuMax(String(Math.round(vmin + span / 3)));
+                            } else if (kind === 'upper') {
+                              setHuMin(String(Math.round(vmax - span / 3)));
+                              setHuMax(String(Math.round(vmax)));
+                            } else {
+                              setHuMin(String(Math.round(vmin + span / 3)));
+                              setHuMax(String(Math.round(vmax - span / 3)));
+                            }
+                          }}
+                        >
+                          <option value="Custom">Custom</option>
+                          {Object.keys(INTENSITY_PRESETS).map((name) => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    <div className="imaging-pair">
+                      <label>Minimum {unitLabel}
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={huMin}
+                          onChange={(event) => {
+                            setHuTissueId('');
+                            setHuMin(event.target.value);
+                          }}
+                        />
+                      </label>
+                      <label>Maximum {unitLabel}
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          value={huMax}
+                          onChange={(event) => {
+                            setHuTissueId('');
+                            setHuMax(event.target.value);
+                          }}
+                        />
+                      </label>
+                    </div>
+                    <label>Color
                       <select
-                        defaultValue="Custom"
+                        value={huColor}
                         onChange={(event) => {
-                          const kind = INTENSITY_PRESETS[event.target.value];
-                          const stats = huStats;
-                          const vmin = Number(stats?.valueMin);
-                          const vmax = Number(stats?.valueMax);
-                          if (!kind || !Number.isFinite(vmin) || !Number.isFinite(vmax) || vmax <= vmin) return;
-                          const span = vmax - vmin;
-                          if (kind === 'lower') {
-                            setHuMin(String(Math.round(vmin)));
-                            setHuMax(String(Math.round(vmin + span / 3)));
-                          } else if (kind === 'upper') {
-                            setHuMin(String(Math.round(vmax - span / 3)));
-                            setHuMax(String(Math.round(vmax)));
-                          } else {
-                            setHuMin(String(Math.round(vmin + span / 3)));
-                            setHuMax(String(Math.round(vmax - span / 3)));
-                          }
+                          const next = event.target.value;
+                          setHuColor(next);
+                          setAppliedThreshold((current) => (current ? { ...current, color: next } : current));
                         }}
                       >
-                        <option value="Custom">Custom</option>
-                        {Object.keys(INTENSITY_PRESETS).map((name) => (
-                          <option key={name} value={name}>{name}</option>
-                        ))}
+                        <option value="red">Red</option>
+                        <option value="green">Green</option>
+                        <option value="blue">Blue</option>
+                        <option value="yellow">Yellow</option>
                       </select>
                     </label>
-                  )}
-                  <div className="imaging-pair">
-                    <label>Minimum {unitLabel}
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={huMin}
-                        onChange={(event) => {
-                          setHuTissueId('');
-                          setHuMin(event.target.value);
-                        }}
-                      />
+                    <label>Overlay opacity {huOpacity}%
+                      <input type="range" min="0" max="100" value={huOpacity} onChange={(event) => setHuOpacity(Number(event.target.value))} />
                     </label>
-                    <label>Maximum {unitLabel}
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={huMax}
-                        onChange={(event) => {
-                          setHuTissueId('');
-                          setHuMax(event.target.value);
-                        }}
-                      />
-                    </label>
-                  </div>
-                  <label>Color
-                    <select
-                      value={huColor}
-                      onChange={(event) => {
-                        const next = event.target.value;
-                        setHuColor(next);
-                        setAppliedThreshold((current) => (current ? { ...current, color: next } : current));
+                    <div className="imaging-actions">
+                      <button type="submit" className="btn-control-secondary">Apply</button>
+                      <button type="button" className="btn-control-secondary" onClick={clearThreshold}>Clear</button>
+                    </div>
+                    {huError && <p className="imaging-note imaging-note--error">{huError}</p>}
+                    {huStats && (
+                      <p className="imaging-note">
+                        {huStats.matching} matching pixels ({huStats.percentage}% of {huStats.eligible}). {huStats.unit || unitLabel} range, not a diagnosis.
+                        {Number(huStats.percentage) >= 80 ? ' This interval covers most of the slice. Narrow the minimum and maximum to highlight one tissue.' : ''}
+                      </p>
+                    )}
+                  </form>
+                </section>
+
+                {(viewMode === 'mpr' || viewMode === '3d') && (
+                  <section className="imaging-panel__section">
+                    <div className="annotation-panel-heading">
+                      <div>
+                        <h3>Linked cursor</h3>
+                      </div>
+                    </div>
+                    <p className="imaging-note">
+                      Axial {(viewMode === '3d' && plane === 'axial' ? index : mprCursor.axial) + 1}/{meta?.plane_counts?.axial || meta?.instance_count || 1}
+                      {' · '}Coronal {(viewMode === '3d' && plane === 'coronal' ? index : mprCursor.coronal) + 1}/{meta?.plane_counts?.coronal || 1}
+                      {' · '}Sagittal {(viewMode === '3d' && plane === 'sagittal' ? index : mprCursor.sagittal) + 1}/{meta?.plane_counts?.sagittal || 1}
+                    </p>
+                    <button
+                      type="button"
+                      className="btn-control-secondary"
+                      onClick={() => {
+                        const counts = meta?.plane_counts || {
+                          axial: meta?.instance_count || 1,
+                          coronal: 1,
+                          sagittal: 1,
+                        };
+                        const centered = midCursor(counts);
+                        setMprCursor(centered);
+                        if (viewMode === '3d') setIndex(centered[plane] || centered.axial || 0);
                       }}
                     >
-                      <option value="red">Red</option>
-                      <option value="green">Green</option>
-                      <option value="blue">Blue</option>
-                      <option value="yellow">Yellow</option>
-                    </select>
-                  </label>
-                  <label>Overlay opacity {huOpacity}%
-                    <input type="range" min="0" max="100" value={huOpacity} onChange={(event) => setHuOpacity(Number(event.target.value))} />
-                  </label>
-                  <div className="imaging-actions">
-                    <button type="submit" className="btn-control-secondary">Apply</button>
-                    <button type="button" className="btn-control-secondary" onClick={clearThreshold}>Clear</button>
-                  </div>
-                  {huError && <p className="imaging-note imaging-note--error">{huError}</p>}
-                  {huStats && (
-                    <p className="imaging-note">
-                      {huStats.matching} matching pixels ({huStats.percentage}% of {huStats.eligible}). {huStats.unit || unitLabel} range, not a diagnosis.
-                      {Number(huStats.percentage) >= 80 ? ' This interval covers most of the slice. Narrow the minimum and maximum to highlight one tissue.' : ''}
-                    </p>
-                  )}
-                </form>
-            </div>
-            </>)}
+                      Center all planes
+                    </button>
+                  </section>
+                )}
+              </>
+            )}
 
-            {(viewMode === 'mpr' || viewMode === '3d') && (
-              <div className="imaging-panel__section">
-                <h3>Linked cursor</h3>
-                <p className="imaging-note">
-                  Axial {(viewMode === '3d' && plane === 'axial' ? index : mprCursor.axial) + 1}/{meta?.plane_counts?.axial || meta?.instance_count || 1}
-                  {' · '}Coronal {(viewMode === '3d' && plane === 'coronal' ? index : mprCursor.coronal) + 1}/{meta?.plane_counts?.coronal || 1}
-                  {' · '}Sagittal {(viewMode === '3d' && plane === 'sagittal' ? index : mprCursor.sagittal) + 1}/{meta?.plane_counts?.sagittal || 1}
-                </p>
-                <button
-                  type="button"
-                  className="btn-control-secondary"
-                  onClick={() => {
-                    const counts = meta?.plane_counts || {
-                      axial: meta?.instance_count || 1,
-                      coronal: 1,
-                      sagittal: 1,
-                    };
-                    const centered = midCursor(counts);
-                    setMprCursor(centered);
-                    if (viewMode === '3d') setIndex(centered[plane] || centered.axial || 0);
-                  }}
-                >
-                  Center all planes
-                </button>
-              </div>
+            {inspectorTab === 'ai' && (
+              <RadiologyAiPanel
+                slide={slide}
+                meta={meta}
+                viewMode={viewMode}
+                plane={plane}
+                index={index}
+                mprCursor={mprCursor}
+                result={neuro}
+                busy={neuroBusy}
+                error={neuroError}
+                onVerified={(body) => setMeta((current) => ({ ...current, modality: body.modality, calibration: body.calibration }))}
+                onSegOverlay={setSegOverlay}
+                onSegState={setSegJob}
+                onRun={async (selection) => {
+                  const requestId = neuroReq.current + 1;
+                  neuroReq.current = requestId;
+                  neuroAbort.current?.abort();
+                  const controller = new AbortController();
+                  neuroAbort.current = controller;
+                  setNeuroBusy(true);
+                  setNeuroError('');
+                  try {
+                    const response = await apiFetch(`${API_BASE_URL}/api/ai/neuromri/predict`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(selection),
+                      signal: controller.signal,
+                    });
+                    const body = await response.json().catch(() => ({}));
+                    if (neuroReq.current !== requestId || controller.signal.aborted) return;
+                    if (!response.ok) throw new Error(body.detail || 'NeuroMRI could not classify this slice');
+                    setNeuro({ ...body, stale: false, selection });
+                  } catch (err) {
+                    if (err.name === 'AbortError' || neuroReq.current !== requestId) return;
+                    setNeuroError(err.message || 'NeuroMRI could not classify this slice');
+                  } finally {
+                    if (neuroReq.current === requestId && !controller.signal.aborted) setNeuroBusy(false);
+                  }
+                }}
+              />
             )}
           </aside>
         )}
